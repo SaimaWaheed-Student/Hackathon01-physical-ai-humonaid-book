@@ -1,0 +1,461 @@
+openapi: 3.0.0
+info:
+  title: RAG Chatbot API
+  description: Retrieval-Augmented Generation chatbot for querying digital books
+  version: 1.0.0
+  contact:
+    name: RAG Chatbot Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8001
+    description: Local development server
+  - url: https://api.book-chat.example.com
+    description: Production deployment
+
+paths:
+  /query:
+    post:
+      summary: Query the chatbot for information about a book
+      operationId: query_book
+      tags:
+        - Query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+            examples:
+              full_book_query:
+                summary: Query entire book
+                value:
+                  question: "What is the main topic of chapter 1?"
+                  book_id: "robotics-book-v1"
+                  top_k: 5
+              selected_text_query:
+                summary: Query based on selected text
+                value:
+                  question: "Tell me more about this concept"
+                  selected_text: "ROS 2 is a middleware framework..."
+                  book_id: "robotics-book-v1"
+      responses:
+        '200':
+          description: Successful query response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+              examples:
+                book_answer:
+                  summary: Answer from book content
+                  value:
+                    answer: "ROS 2 is a distributed middleware framework that enables communication between robot components..."
+                    sources:
+                      - chunk_text: "ROS 2 (Robot Operating System 2) is the second generation of the popular..."
+                        page_num: 42
+                        chunk_id: 15
+                        similarity_score: 0.89
+                    is_fallback: false
+                    model: "openai/gpt-4o-mini"
+                    latency_ms: 2340
+                    timestamp: 1704067200.0
+                fallback_answer:
+                  summary: Answer from general knowledge (not in book)
+                  value:
+                    answer: "While not covered in this book, ROS 2 is also used in commercial applications like..."
+                    sources: []
+                    is_fallback: true
+                    model: "openai/gpt-4o-mini"
+                    latency_ms: 1200
+                    timestamp: 1704067200.0
+        '400':
+          description: Bad request (invalid input)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "question field required and must be non-empty"
+                status: 400
+        '404':
+          description: Book not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Book 'unknown-book' not found"
+                status: 404
+        '500':
+          description: Server error (Qdrant/OpenRouter unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Vector database unavailable. Please try again in a moment."
+                status: 500
+
+  /ingest:
+    post:
+      summary: Ingest a new book into the system
+      operationId: ingest_book
+      tags:
+        - Ingestion
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF or text file to ingest
+                book_id:
+                  type: string
+                  description: Unique identifier for the book
+                  example: "robotics-book-v1"
+                title:
+                  type: string
+                  description: Human-readable title
+                  example: "Physical AI and Humanoid Robotics"
+                author:
+                  type: string
+                  description: Author name
+                  example: "Jane Doe"
+              required:
+                - file
+                - book_id
+      responses:
+        '202':
+          description: Ingestion started (async)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "INGESTING"
+                  book_id:
+                    type: string
+                    example: "robotics-book-v1"
+                  message:
+                    type: string
+                    example: "Book ingestion started. Check status with GET /ingest/{book_id}"
+        '400':
+          description: Bad request (missing fields, unsupported format)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File too large (>50MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Ingestion failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ingest/{book_id}:
+    get:
+      summary: Get ingestion status for a book
+      operationId: get_ingest_status
+      tags:
+        - Ingestion
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "robotics-book-v1"
+      responses:
+        '200':
+          description: Ingestion status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [PENDING, INGESTING, COMPLETE, ERROR]
+                    example: "COMPLETE"
+                  book_id:
+                    type: string
+                  chunk_count:
+                    type: integer
+                    example: 523
+                  progress_percent:
+                    type: integer
+                    example: 100
+                  error:
+                    type: string
+                    nullable: true
+                    example: null
+        '404':
+          description: Book not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /books:
+    get:
+      summary: List all ingested books
+      operationId: list_books
+      tags:
+        - Books
+      responses:
+        '200':
+          description: List of books
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  books:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BookInfo'
+                  total:
+                    type: integer
+                    example: 3
+              example:
+                books:
+                  - book_id: "robotics-book-v1"
+                    title: "Physical AI and Humanoid Robotics"
+                    author: "Jane Doe"
+                    chunk_count: 523
+                    uploaded_at: 1704067200.0
+                total: 1
+
+  /health:
+    get:
+      summary: Health check endpoint
+      operationId: health_check
+      tags:
+        - System
+      responses:
+        '200':
+          description: System healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded]
+                    example: "healthy"
+                  qdrant:
+                    type: string
+                    enum: [ok, unreachable]
+                    example: "ok"
+                  openrouter:
+                    type: string
+                    enum: [ok, unreachable]
+                    example: "ok"
+                  timestamp:
+                    type: number
+                    example: 1704067200.0
+        '503':
+          description: System unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "degraded"
+                  details:
+                    type: object
+                    example:
+                      qdrant: "Connection timeout"
+                      openrouter: "ok"
+
+components:
+  schemas:
+    QueryRequest:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: The question to ask about the book
+          example: "What is ROS 2?"
+        selected_text:
+          type: string
+          maxLength: 5000
+          nullable: true
+          description: Optional user-selected text for context
+          example: "ROS 2 is a middleware framework that..."
+        book_id:
+          type: string
+          default: "default"
+          description: ID of the book to query
+          example: "robotics-book-v1"
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
+          description: Number of chunks to retrieve
+          example: 5
+
+    QueryResponse:
+      type: object
+      required:
+        - answer
+        - sources
+        - is_fallback
+        - model
+        - timestamp
+      properties:
+        answer:
+          type: string
+          description: The synthesized answer to the question
+          example: "ROS 2 is a distributed middleware framework..."
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+          description: Book sources used to generate answer
+        is_fallback:
+          type: boolean
+          description: True if answer comes from general knowledge (not book)
+          example: false
+        model:
+          type: string
+          description: LLM model used for synthesis
+          example: "openai/gpt-4o-mini"
+        latency_ms:
+          type: integer
+          description: Total latency in milliseconds
+          example: 2340
+        timestamp:
+          type: number
+          description: Unix timestamp of response
+          example: 1704067200.0
+
+    Source:
+      type: object
+      required:
+        - chunk_text
+        - page_num
+        - chunk_id
+      properties:
+        chunk_text:
+          type: string
+          description: The actual text from the book
+          example: "ROS 2 (Robot Operating System 2) is the second generation..."
+        page_num:
+          type: integer
+          description: Page number in the book
+          example: 42
+        chunk_id:
+          type: integer
+          description: Chunk identifier within the book
+          example: 15
+        section_title:
+          type: string
+          nullable: true
+          description: Optional chapter or section title
+          example: "Chapter 3: Middleware Architecture"
+        similarity_score:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Cosine similarity score (0-1)
+          example: 0.89
+
+    BookInfo:
+      type: object
+      required:
+        - book_id
+        - title
+        - chunk_count
+        - uploaded_at
+      properties:
+        book_id:
+          type: string
+          example: "robotics-book-v1"
+        title:
+          type: string
+          example: "Physical AI and Humanoid Robotics"
+        author:
+          type: string
+          nullable: true
+          example: "Jane Doe"
+        chunk_count:
+          type: integer
+          example: 523
+        uploaded_at:
+          type: number
+          description: Unix timestamp
+          example: 1704067200.0
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - status
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid request: question field is required"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        details:
+          type: object
+          nullable: true
+          description: Additional error details
+          example: null
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      name: X-API-Key
+      in: header
+      description: Optional API key for rate limiting (Phase 2)
+
+security: []
+  # Note: Phase 1 has no authentication.
+  # Phase 2 will add optional API key auth for rate limiting.
