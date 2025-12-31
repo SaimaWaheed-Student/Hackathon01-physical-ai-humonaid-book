@@ -1,0 +1,286 @@
+---
+sidebar_position: 4
+title: Module 2 - Exercises
+---
+
+# Module 2 Exercises: Physics Simulation in Gazebo
+
+**Total Exercises**: 8 | **Difficulty**: Intermediate | **Estimated Time**: 2-3 hours
+
+These exercises reinforce Lessons 2.1–2.3. Each includes starter code and acceptance criteria.
+
+---
+
+## Exercise 1: Configure Physics Engine
+
+**Objective**: Create a Gazebo world with configurable physics engine and gravity.
+
+**Starter Code**:
+```xml
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <world name="physics_tuning">
+    <!-- TODO: Add physics element with ODE engine -->
+    <!-- TODO: Set gravity to 0 0 -9.81 -->
+    <!-- TODO: Configure max_step_size to 0.001 -->
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+  </world>
+</sdf>
+```
+
+**Acceptance Criteria**:
+- [ ] Physics engine type is ODE
+- [ ] Gravity vector is (0, 0, -9.81) m/s²
+- [ ] max_step_size is 0.001 seconds
+- [ ] real_time_factor is set to 1.0
+- [ ] World loads without errors in Gazebo
+
+---
+
+## Exercise 2: Create and Simulate a Robot Model
+
+**Objective**: Build a 2-link robot with motors and simulate it moving.
+
+**Starter Code**:
+```xml
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="robot_arm">
+    <!-- TODO: Create base_link with mass 2.0 kg -->
+    <!-- TODO: Create arm_link with mass 1.0 kg -->
+    <!-- TODO: Add revolute joint between base and arm -->
+    <!-- TODO: Set joint limits: -π/2 to π/2 -->
+    <!-- TODO: Add motor dynamics with damping=0.1 -->
+  </model>
+</sdf>
+```
+
+**Acceptance Criteria**:
+- [ ] Model has 2 links with correct masses
+- [ ] Joint rotates in Y axis
+- [ ] Joint limits are symmetric (±90°)
+- [ ] Model doesn't collapse under gravity
+- [ ] Can apply effort to joint
+
+---
+
+## Exercise 3: Implement Camera Sensor
+
+**Objective**: Add RGB camera to robot and subscribe to image data.
+
+**Starter Code**:
+```python
+import rclpy
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+
+class CameraReader(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('camera_reader')
+        # TODO: Subscribe to /camera/image_raw
+        # TODO: Create cv_bridge
+        # TODO: Log image dimensions on receipt
+
+    def image_callback(self, msg):
+        # TODO: Convert ROS image to CV format
+        # TODO: Print image shape (height, width, channels)
+        pass
+```
+
+**Acceptance Criteria**:
+- [ ] Subscribes to camera topic
+- [ ] Receives image messages
+- [ ] Logs image dimensions
+- [ ] Converts between ROS and OpenCV formats
+- [ ] Runs for ≥10 seconds without errors
+
+---
+
+## Exercise 4: Process LiDAR Data
+
+**Objective**: Subscribe to LiDAR scans and detect obstacles.
+
+**Starter Code**:
+```python
+import rclpy
+from sensor_msgs.msg import LaserScan
+import numpy as np
+
+class LidarObstacleDetector(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('lidar_detector')
+        # TODO: Subscribe to /scan topic
+        self.obstacle_threshold = 1.0  # meters
+
+    def scan_callback(self, msg):
+        # TODO: Extract ranges as numpy array
+        # TODO: Find minimum range (closest obstacle)
+        # TODO: Check if obstacle_threshold exceeded
+        # TODO: Log warning if obstacle detected
+        pass
+```
+
+**Acceptance Criteria**:
+- [ ] Subscribes to laser scan topic
+- [ ] Converts ranges to numpy array
+- [ ] Detects obstacles within 1m
+- [ ] Logs obstacle distance
+- [ ] No errors for ≥30 seconds
+
+---
+
+## Exercise 5: Implement PID Controller
+
+**Objective**: Create PID controller to hold robot arm at target position.
+
+**Starter Code**:
+```python
+class PIDController:
+    def __init__(self, kp=10.0, ki=1.0, kd=0.5):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        # TODO: Initialize error tracking variables
+
+    def update(self, error, dt):
+        # TODO: Calculate proportional term
+        # TODO: Calculate integral term
+        # TODO: Calculate derivative term
+        # TODO: Return total output
+        pass
+```
+
+**Acceptance Criteria**:
+- [ ] Tuned to target position within 0.1 radians
+- [ ] Settling time < 2 seconds
+- [ ] No overshoot > 10%
+- [ ] Integral prevents steady-state error
+- [ ] Derivative damps oscillations
+
+---
+
+## Exercise 6: Validate Control Performance
+
+**Objective**: Measure and log control system metrics.
+
+**Starter Code**:
+```python
+class ControlValidator:
+    def __init__(self, target):
+        self.target = target
+        self.errors = []
+        self.overshoots = 0
+
+    def evaluate(self, current_position, time):
+        # TODO: Calculate error
+        # TODO: Track maximum error
+        # TODO: Count overshoots
+        # TODO: Calculate settling time
+        pass
+
+    def print_metrics(self):
+        # TODO: Report steady-state error
+        # TODO: Report overshoot
+        # TODO: Report settling time
+        pass
+```
+
+**Acceptance Criteria**:
+- [ ] Tracks steady-state error
+- [ ] Detects overshoots
+- [ ] Measures settling time
+- [ ] Reports metrics in standardized format
+- [ ] Used successfully in control loop
+
+---
+
+## Exercise 7: Simulate Force Control
+
+**Objective**: Apply torques and measure joint reactions.
+
+**Starter Code**:
+```python
+from gazebo_msgs.srv import ApplyJointEffort
+
+class ForceController(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('force_controller')
+        # TODO: Create client for ApplyJointEffort
+        # TODO: Create subscription to joint states
+        self.applied_effort = 0
+        self.joint_effort_measured = 0
+
+    def apply_torque(self, joint_name, effort, duration=1.0):
+        # TODO: Create request
+        # TODO: Set joint name, effort, duration
+        # TODO: Call service and log response
+        pass
+```
+
+**Acceptance Criteria**:
+- [ ] Successfully applies effort to joint
+- [ ] Reads back joint effort from state
+- [ ] Effort magnitude correct (±10%)
+- [ ] Joint motion responds to effort
+- [ ] Works for 1+ second duration
+
+---
+
+## Exercise 8: Multi-Sensor Integration
+
+**Objective**: Combine camera, LiDAR, and IMU for complete perception.
+
+**Starter Code**:
+```python
+class MultiSensorFusion(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('sensor_fusion')
+        # TODO: Subscribe to /camera/image_raw
+        # TODO: Subscribe to /scan
+        # TODO: Subscribe to /imu
+        self.latest_image = None
+        self.latest_scan = None
+        self.latest_imu = None
+
+    def process_sensor_data(self):
+        # TODO: Check if all sensors have recent data
+        # TODO: Fuse camera + LiDAR for obstacle avoidance
+        # TODO: Use IMU for orientation estimation
+        # TODO: Log fused state
+        pass
+```
+
+**Acceptance Criteria**:
+- [ ] Subscribes to all three sensor topics
+- [ ] Stores latest message from each
+- [ ] Processes data without blocking
+- [ ] Logs fused sensor state
+- [ ] Runs stably for 1+ minute
+
+---
+
+## Summary & Tips
+
+**Tips for Success**:
+- 🎯 Validate physics parameters match expectations
+- 📊 Use ROS 2 topic inspection to debug sensor output
+- 🔧 Start with low PID gains, increase gradually
+- 📝 Log all control actions and state
+- 🧪 Test incrementally before moving to next exercise
+
+**Total Exercise Time**: 2–3 hours
+**Difficulty**: Intermediate
+**Prerequisites**: Lessons 2.1–2.3

@@ -1,0 +1,478 @@
+---
+sidebar_position: 6
+title: Module 2 - Capstone Project
+---
+
+# Module 2 Capstone: Humanoid Arm Grasping Simulation
+
+**Duration**: 3-4 hours | **Difficulty**: Intermediate | **Prerequisite**: Lessons 2.1–2.3 + Exercises 1–8
+
+## Project Overview
+
+Build a complete simulation system for a humanoid robot arm performing object grasping tasks. You'll integrate physics simulation, sensor processing, and control to create a realistic robotic manipulation pipeline.
+
+### Learning Goals
+
+By completing this capstone, you will:
+- Design complex robot models with realistic dynamics
+- Validate control algorithms in simulation
+- Process multi-sensor data for decision-making
+- Implement grasping primitives (reach, grasp, lift)
+- Test robustness across scenario variations
+
+---
+
+## Project Architecture
+
+```
+Gazebo Simulator
+├── World (gravity, objects, obstacles)
+├── Humanoid Arm Model (7-DOF arm + gripper)
+├── Sensors (camera, force sensors)
+└── ROS 2 Interfaces
+    ├── /joint_states (arm position/velocity/effort)
+    ├── /camera/image_raw (gripper camera)
+    ├── /wrist_force_torque (force sensor)
+    ├── /gripper_command (gripper control)
+    └── /arm_trajectory_controller/command (trajectory)
+```
+
+---
+
+## Part 1: Robot Model Definition
+
+### SDF Model (humanoid_arm.sdf)
+
+```xml
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="humanoid_arm">
+    <!-- Base (shoulder) -->
+    <link name="base_link">
+      <inertial>
+        <mass>5.0</mass>
+        <inertia>
+          <ixx>0.02</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.02</iyy>
+          <iyz>0</iyz>
+          <izz>0.02</izz>
+        </inertia>
+      </inertial>
+      <visual>
+        <geometry>
+          <box>
+            <size>0.1 0.1 0.15</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.8 0.8 0.8 1</ambient>
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <box>
+            <size>0.1 0.1 0.15</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Shoulder Joint (Z-axis rotation) -->
+    <joint name="shoulder_yaw" type="revolute">
+      <parent>base_link</parent>
+      <child>upper_arm</child>
+      <origin xyz="0 0 0.1" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-3.14159" upper="3.14159" effort="100" velocity="2.0"/>
+      <dynamics damping="0.1" friction="0.05"/>
+    </joint>
+
+    <!-- Upper Arm -->
+    <link name="upper_arm">
+      <inertial>
+        <mass>2.0</mass>
+        <inertia>
+          <ixx>0.005</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.05</iyy>
+          <iyz>0</iyz>
+          <izz>0.05</izz>
+        </inertia>
+      </inertial>
+      <visual>
+        <geometry>
+          <cylinder>
+            <radius>0.04</radius>
+            <length>0.4</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.5 0.5 0.9 1</ambient>
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder>
+            <radius>0.04</radius>
+            <length>0.4</length>
+          </cylinder>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Elbow Joint -->
+    <joint name="elbow_pitch" type="revolute">
+      <parent>upper_arm</parent>
+      <child>forearm</child>
+      <origin xyz="0 0 0.2" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="-1.57079" upper="1.57079" effort="80" velocity="2.0"/>
+      <dynamics damping="0.1" friction="0.05"/>
+    </joint>
+
+    <!-- Forearm -->
+    <link name="forearm">
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.003</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.04</iyy>
+          <iyz>0</iyz>
+          <izz>0.04</izz>
+        </inertia>
+      </inertial>
+      <visual>
+        <geometry>
+          <cylinder>
+            <radius>0.03</radius>
+            <length>0.35</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.6 0.6 0.9 1</ambient>
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder>
+            <radius>0.03</radius>
+            <length>0.35</length>
+          </cylinder>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Wrist Joint -->
+    <joint name="wrist_roll" type="revolute">
+      <parent>forearm</parent>
+      <child>wrist</child>
+      <origin xyz="0 0 0.175" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="-1.57079" upper="1.57079" effort="50" velocity="3.0"/>
+      <dynamics damping="0.05" friction="0.02"/>
+    </joint>
+
+    <!-- Wrist -->
+    <link name="wrist">
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0002</iyy>
+          <iyz>0</iyz>
+          <izz>0.0002</izz>
+        </inertia>
+      </inertial>
+      <visual>
+        <geometry>
+          <sphere>
+            <radius>0.02</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.9 0.5 0.5 1</ambient>
+        </material>
+      </visual>
+    </link>
+
+    <!-- End-Effector (Gripper) -->
+    <joint name="gripper_joint" type="prismatic">
+      <parent>wrist</parent>
+      <child>gripper</child>
+      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="0" upper="0.05" effort="50" velocity="0.5"/>
+      <dynamics damping="0.1"/>
+    </joint>
+
+    <link name="gripper">
+      <inertial>
+        <mass>0.3</mass>
+        <inertia>
+          <ixx>0.00001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00001</iyy>
+          <iyz>0</iyz>
+          <izz>0.00001</izz>
+        </inertia>
+      </inertial>
+      <visual>
+        <geometry>
+          <box>
+            <size>0.08 0.02 0.08</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.3 0.3 0.3 1</ambient>
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <box>
+            <size>0.08 0.02 0.08</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Camera on Wrist -->
+    <sensor name="wrist_camera" type="camera">
+      <pose>0 0 0.05 0 0 0</pose>
+      <camera>
+        <horizontal_fov>1.047</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.01</near>
+          <far>5</far>
+        </clip>
+      </camera>
+      <always_on>true</always_on>
+      <update_rate>30</update_rate>
+    </sensor>
+
+    <!-- Force/Torque Sensor at Wrist -->
+    <sensor name="wrist_ft_sensor" type="force_torque">
+      <pose>0 0 0 0 0 0</pose>
+      <always_on>true</always_on>
+      <update_rate>100</update_rate>
+    </sensor>
+  </model>
+</sdf>
+```
+
+---
+
+## Part 2: Control System (ROS 2)
+
+### Arm Controller
+
+```python
+import rclpy
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from std_msgs.msg import Float64MultiArray
+import math
+
+class HumanoidArmController(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('humanoid_arm_controller')
+
+        # Joint names (7-DOF arm + gripper)
+        self.joint_names = [
+            'shoulder_yaw', 'elbow_pitch', 'wrist_roll',
+            'gripper_joint'
+        ]
+
+        self.trajectory_pub = self.create_publisher(
+            JointTrajectory,
+            '/arm_trajectory_controller/command',
+            10
+        )
+
+    def move_to_position(self, joint_angles, duration=2.0):
+        """Execute trajectory to target joint angles."""
+        traj = JointTrajectory()
+        traj.joint_names = self.joint_names
+        traj.header.stamp = self.get_clock().now().to_msg()
+
+        point = JointTrajectoryPoint()
+        point.positions = joint_angles
+        point.velocities = [0.0] * len(self.joint_names)
+        point.time_from_start = rclpy.duration.Duration(seconds=duration).to_msg()
+
+        traj.points = [point]
+        self.trajectory_pub.publish(traj)
+        self.get_logger().info(f'Moving to: {joint_angles}')
+
+    def grasp_object(self):
+        """Move to grasping position and close gripper."""
+        # Reach above object
+        reach_angles = [0.0, -0.5, 0.0, 0.0]  # radians
+        self.move_to_position(reach_angles, duration=1.5)
+
+        # Close gripper (0.05 = fully closed)
+        grasp_angles = [0.0, -0.5, 0.0, 0.05]
+        self.move_to_position(grasp_angles, duration=0.5)
+
+        self.get_logger().info('Object grasped!')
+
+def main():
+    rclpy.init()
+    controller = HumanoidArmController()
+
+    # Execute grasp
+    controller.grasp_object()
+
+    rclpy.spin(controller)
+    rclpy.shutdown()
+```
+
+---
+
+## Part 3: Perception Pipeline
+
+### Object Detection and Grasping
+
+```python
+from sensor_msgs.msg import Image
+import cv2
+from cv_bridge import CvBridge
+import numpy as np
+
+class GraspingPipeline(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('grasping_pipeline')
+        self.image_sub = self.create_subscription(
+            Image, '/wrist_camera/image_raw', self.image_callback, 10
+        )
+        self.bridge = CvBridge()
+        self.latest_image = None
+
+    def image_callback(self, msg):
+        self.latest_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
+
+    def detect_object(self):
+        """Detect target object in gripper camera view."""
+        if self.latest_image is None:
+            return None
+
+        # Convert to HSV for color detection
+        hsv = cv2.cvtColor(self.latest_image, cv2.COLOR_BGR2HSV)
+
+        # Define color range (example: red object)
+        lower_red = np.array([0, 100, 100])
+        upper_red = np.array([10, 255, 255])
+
+        mask = cv2.inRange(hsv, lower_red, upper_red)
+
+        # Find contours
+        contours, _ = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        if contours:
+            largest = max(contours, key=cv2.contourArea)
+            M = cv2.moments(largest)
+            if M['m00'] > 0:
+                cx = int(M['m10'] / M['m00'])
+                cy = int(M['m01'] / M['m00'])
+                return (cx, cy)
+
+        return None
+
+    def compute_grasp_points(self, object_center):
+        """Compute grasp point from object detection."""
+        if object_center is None:
+            return None
+
+        # Simple heuristic: grasp above object center
+        cx, cy = object_center
+        image_h, image_w = self.latest_image.shape[:2]
+
+        # Normalize to image coordinates
+        norm_x = (cx - image_w // 2) / (image_w // 2)
+        norm_y = (cy - image_h // 2) / (image_h // 2)
+
+        return {'x': norm_x, 'y': norm_y}
+```
+
+---
+
+## Part 4: Validation & Testing
+
+### Performance Metrics
+
+```python
+class GraspingValidator:
+    def __init__(self):
+        self.grasp_attempts = 0
+        self.successful_grasps = 0
+        self.gripper_force_measurements = []
+
+    def attempt_grasp(self, gripper_force):
+        self.grasp_attempts += 1
+        # Successful if gripper force > 5N
+        if gripper_force > 5.0:
+            self.successful_grasps += 1
+            return True
+        return False
+
+    def get_success_rate(self):
+        if self.grasp_attempts == 0:
+            return 0.0
+        return self.successful_grasps / self.grasp_attempts * 100
+
+    def print_report(self):
+        print(f'Grasping Report:')
+        print(f'├─ Attempts: {self.grasp_attempts}')
+        print(f'├─ Successful: {self.successful_grasps}')
+        print(f'├─ Success Rate: {self.get_success_rate():.1f}%')
+        print(f'└─ Avg Force: {np.mean(self.gripper_force_measurements):.2f}N')
+```
+
+---
+
+## Evaluation Criteria
+
+Your capstone submission will be evaluated on:
+
+- **Model Fidelity** (20%): Realistic robot dynamics and inertia
+- **Control Quality** (20%): Smooth, stable arm movements
+- **Sensor Integration** (20%): Correct camera/force sensor usage
+- **Perception** (20%): Accurate object detection and grasp planning
+- **Robustness** (20%): Works across scenario variations
+
+---
+
+## Submission Requirements
+
+1. **SDF Model** - Humanoid arm with ≥3 joints + gripper
+2. **ROS 2 Controller** - Trajectory execution with logging
+3. **Perception Pipeline** - Object detection + grasp planning
+4. **Validation Report** - Metrics and success rates
+5. **Documentation** - Code comments and design decisions
+
+---
+
+## Success Criteria
+
+- ✅ Arm reaches target position within 0.1 rad error
+- ✅ Gripper closes successfully on simulated object
+- ✅ Camera detects object with ≥80% confidence
+- ✅ Control runs for 5+ minutes without crashes
+- ✅ Force feedback shows >10N during grasping
+
+---
+
+**Congratulations!** You've completed Module 2. Ready for [Module 3: Advanced Simulation with Isaac](../module-3-isaac)?

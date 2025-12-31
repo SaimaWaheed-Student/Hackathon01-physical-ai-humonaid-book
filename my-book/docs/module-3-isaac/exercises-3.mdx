@@ -1,0 +1,498 @@
+---
+sidebar_position: 4
+title: Module 3 - Exercises
+---
+
+# Module 3 Exercises: Isaac Sim, SLAM & Reinforcement Learning
+
+**Total Exercises**: 8 | **Difficulty**: Intermediate to Advanced | **Estimated Time**: 3-4 hours
+
+These exercises reinforce Lessons 3.1–3.3. Each includes starter code and acceptance criteria.
+
+---
+
+## Exercise 1: Setup Isaac Sim Environment
+
+**Objective**: Initialize Isaac Sim application with physics and rendering.
+
+**Starter Code**:
+```python
+# isaac_sim_exercise_1.py
+from isaacsim import SimulationApp
+
+class IsaacSimInitializer:
+    def __init__(self):
+        # TODO: Create SimulationApp with headless=False
+        # TODO: Load default environment
+        # TODO: Set physics engine to PhysX
+
+    def setup_physics(self):
+        # TODO: Set gravity to (0, 0, -9.81)
+        # TODO: Set simulation timestep to 0.01 seconds
+        # TODO: Enable GPU dynamics
+        pass
+
+    def add_ground_plane(self):
+        # TODO: Add ground plane at z=0
+        # TODO: Set material to concrete with friction=0.5
+        pass
+
+if __name__ == '__main__':
+    sim = IsaacSimInitializer()
+    sim.setup_physics()
+    sim.add_ground_plane()
+    # TODO: Spin simulation for 100 steps
+```
+
+**Acceptance Criteria**:
+- [ ] SimulationApp initializes without errors
+- [ ] Physics engine set to PhysX with GPU acceleration
+- [ ] Gravity and timestep configured correctly
+- [ ] Ground plane renders visibly
+- [ ] Simulation runs for 100+ steps without crashing
+- [ ] Can view in Isaac Sim GUI
+
+---
+
+## Exercise 2: Generate Synthetic Dataset with Domain Randomization
+
+**Objective**: Capture 100 images with randomized physics and visual properties.
+
+**Starter Code**:
+```python
+# isaac_sim_synthetic_data.py
+import numpy as np
+from pathlib import Path
+
+class SyntheticDataGenerator:
+    def __init__(self, output_dir='synthetic_data'):
+        # TODO: Initialize simulation
+        # TODO: Create output directory
+        # TODO: Setup camera for image capture
+        self.frame_count = 0
+
+    def randomize_environment(self):
+        # TODO: Randomize robot mass (0.9-1.1x)
+        # TODO: Randomize friction (0.2-1.0)
+        # TODO: Randomize lighting intensity (0.5-2.0)
+        # TODO: Randomize camera noise level (0-0.05)
+        pass
+
+    def capture_frame(self):
+        # TODO: Capture RGB image
+        # TODO: Capture depth image
+        # TODO: Get ground truth joint angles
+        # TODO: Save to disk with metadata
+        self.frame_count += 1
+
+    def generate_dataset(self, num_frames=100):
+        # TODO: Loop for num_frames
+        # TODO: Randomize environment each iteration
+        # TODO: Capture frame
+        # TODO: Log progress
+        pass
+
+if __name__ == '__main__':
+    generator = SyntheticDataGenerator()
+    generator.generate_dataset(num_frames=100)
+    print(f"Generated {generator.frame_count} frames")
+```
+
+**Acceptance Criteria**:
+- [ ] Generates 100 image frames
+- [ ] Each frame includes RGB, depth, metadata
+- [ ] Domain randomization applied consistently
+- [ ] Metadata includes: timestamp, joint angles, randomization params
+- [ ] Images saved in organized directory structure
+- [ ] Can load and visualize dataset
+- [ ] Total dataset size < 500 MB
+
+---
+
+## Exercise 3: Implement SLAM Loop Closure Detection
+
+**Objective**: Build feature-based loop closure detector using ORB.
+
+**Starter Code**:
+```python
+# slam_loop_closure.py
+import cv2
+import numpy as np
+from collections import deque
+
+class SLAMLoopDetector:
+    def __init__(self, num_keyframes=50, threshold=0.7):
+        # TODO: Initialize ORB feature extractor
+        # TODO: Create storage for keyframes and descriptors
+        self.keyframes = deque(maxlen=num_keyframes)
+        self.descriptors = deque(maxlen=num_keyframes)
+        self.threshold = threshold
+
+    def extract_features(self, image):
+        # TODO: Detect keypoints using ORB
+        # TODO: Compute descriptors
+        # TODO: Return (keypoints, descriptors)
+        pass
+
+    def detect_loop_closure(self, current_image):
+        # TODO: Extract features from current image
+        # TODO: Compare with all previous keyframes
+        # TODO: Find best matching keyframe
+        # TODO: Return index if match exceeds threshold
+        pass
+
+    def add_keyframe(self, image):
+        # TODO: Extract features
+        # TODO: Store image and descriptors
+        # TODO: Log keyframe added
+        pass
+
+# Test loop closure detector
+if __name__ == '__main__':
+    detector = SLAMLoopDetector()
+
+    # Simulate image sequence
+    cap = cv2.VideoCapture(0)  # Webcam or video file
+
+    frame_count = 0
+    while frame_count < 200:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        detector.add_keyframe(frame)
+
+        if frame_count % 10 == 0:
+            loop_idx = detector.detect_loop_closure(frame)
+            if loop_idx is not None:
+                print(f"Loop closure detected: current frame {frame_count} "
+                      f"matches keyframe {loop_idx}")
+
+        frame_count += 1
+
+    cap.release()
+```
+
+**Acceptance Criteria**:
+- [ ] ORB feature detector initializes correctly
+- [ ] Extracts 200+ features per image
+- [ ] Compares descriptors between frames
+- [ ] Detects loop closures when revisiting location
+- [ ] False positive rate < 10%
+- [ ] Processing time < 50ms per frame
+
+---
+
+## Exercise 4: Configure Nav2 Costmap with Sensor Fusion
+
+**Objective**: Setup ROS 2 Nav2 costmap layers for autonomous navigation.
+
+**Starter Code**:
+```yaml
+# nav2_costmap_config.yaml
+costmap:
+  costmap:
+    ros__parameters:
+      # TODO: Set global_frame to 'map'
+      # TODO: Set robot_base_frame to 'base_link'
+      # TODO: Set update_frequency to 5.0
+
+      # TODO: Configure plugins list:
+      # - static_layer
+      # - obstacle_layer
+      # - inflation_layer
+
+      static_layer:
+        # TODO: Load pre-built map
+        # TODO: Set map_subscribe_transient_local
+        pass
+
+      obstacle_layer:
+        # TODO: Subscribe to /scan (LiDAR)
+        # TODO: Set max_obstacle_height: 2.0
+        # TODO: Enable clearing: true
+        # TODO: Set data_type: LaserScan
+
+      inflation_layer:
+        # TODO: Set cost_scaling_factor: 10.0
+        # TODO: Set inflation_radius: 0.55
+```
+
+**Acceptance Criteria**:
+- [ ] Costmap configuration valid YAML
+- [ ] All three layers configured
+- [ ] Static layer loads map correctly
+- [ ] Obstacle layer subscribes to sensor topic
+- [ ] Inflation layer creates safety margin
+- [ ] Nav2 starts without errors
+- [ ] Costmap updates at 5 Hz
+
+---
+
+## Exercise 5: Train RL Agent for Navigation
+
+**Objective**: Implement PPO training loop for robot navigation policy.
+
+**Starter Code**:
+```python
+# rl_training.py
+import torch
+import torch.nn as nn
+import numpy as np
+
+class NavigationPolicy(nn.Module):
+    def __init__(self, state_dim=8, action_dim=2):
+        super().__init__()
+        # TODO: Create shared feature network (64, 64)
+        # TODO: Create policy head (output: action_dim)
+        # TODO: Create value head (output: 1)
+
+    def forward(self, state):
+        # TODO: Pass through shared network
+        # TODO: Return (action_logits, value)
+        pass
+
+class PPOTrainer:
+    def __init__(self, policy, learning_rate=3e-4):
+        self.policy = policy
+        # TODO: Create optimizer (Adam)
+        # TODO: Set learning rate
+
+    def train_step(self, states, actions, advantages, returns):
+        # TODO: Compute action log probabilities
+        # TODO: Compute policy loss with PPO clipping
+        # TODO: Compute value loss
+        # TODO: Backprop and optimize
+        pass
+
+# Training loop
+if __name__ == '__main__':
+    policy = NavigationPolicy()
+    trainer = PPOTrainer(policy)
+
+    # TODO: Create environment (Isaac Sim or simulator)
+    # TODO: Collect experience (100 episodes)
+    # TODO: Compute advantages and returns
+    # TODO: Train policy for 10 epochs
+    # TODO: Evaluate policy (5 episodes)
+    # TODO: Save best model
+
+    print("Training complete!")
+```
+
+**Acceptance Criteria**:
+- [ ] Policy network initializes with correct dimensions
+- [ ] Optimizer creates without errors
+- [ ] Training loop runs for 100+ episodes
+- [ ] Loss decreases over training
+- [ ] Evaluation reward improves by >20%
+- [ ] Model can be saved and loaded
+- [ ] Training completes in less than 10 minutes
+
+---
+
+## Exercise 6: Evaluate Trained Policy on New Environment
+
+**Objective**: Test policy generalization with domain randomization.
+
+**Starter Code**:
+```python
+# evaluate_policy.py
+import numpy as np
+
+class PolicyEvaluator:
+    def __init__(self, policy, num_episodes=10):
+        self.policy = policy
+        self.num_episodes = num_episodes
+        self.rewards = []
+
+    def evaluate(self, environment):
+        # TODO: Run policy for num_episodes
+        # TODO: Collect trajectory without training
+        # TODO: Track total reward per episode
+        # TODO: Compute success rate
+        pass
+
+    def evaluate_with_randomization(self, environment):
+        # TODO: Randomize physics (mass, friction)
+        # TODO: Randomize visual properties
+        # TODO: Run policy
+        # TODO: Compare rewards to baseline
+        pass
+
+    def print_statistics(self):
+        # TODO: Report mean reward
+        # TODO: Report std dev
+        # TODO: Report min/max
+        # TODO: Report success rate
+        pass
+
+if __name__ == '__main__':
+    evaluator = PolicyEvaluator()
+
+    # Load trained policy
+    # TODO: policy = load_policy('trained_model.pth')
+
+    # Evaluate on standard environment
+    # evaluator.evaluate(env)
+    # evaluator.print_statistics()
+
+    # Evaluate with domain randomization
+    # evaluator.evaluate_with_randomization(env)
+```
+
+**Acceptance Criteria**:
+- [ ] Loads trained policy checkpoint
+- [ ] Runs 10+ episodes without training
+- [ ] Tracks episode rewards
+- [ ] Computes success metrics
+- [ ] Evaluates with randomized parameters
+- [ ] Reports statistics (mean, std, min, max)
+- [ ] Policy performance consistent (std < mean/2)
+
+---
+
+## Exercise 7: Implement Sim-to-Real Transfer
+
+**Objective**: Adapt policy to real robot hardware with online learning.
+
+**Starter Code**:
+```python
+# sim_to_real_transfer.py
+import torch
+from datetime import datetime
+
+class SimToRealAdapter:
+    def __init__(self, sim_policy, real_robot):
+        self.sim_policy = sim_policy
+        self.real_robot = real_robot
+        self.adaptation_buffer = []
+
+    def collect_real_experience(self, steps=1000):
+        # TODO: Execute policy on real robot
+        # TODO: Collect state, action, reward
+        # TODO: Store in replay buffer
+        pass
+
+    def fine_tune_on_real(self, learning_rate=1e-5):
+        # TODO: Create optimizer with low learning rate
+        # TODO: Load real experience from buffer
+        # TODO: Update policy weights
+        # TODO: Save adapted model
+        pass
+
+    def evaluate_on_real(self, num_episodes=5):
+        # TODO: Execute adapted policy
+        # TODO: Measure success rate
+        # TODO: Log failures for debugging
+        pass
+
+if __name__ == '__main__':
+    # TODO: Load sim-trained policy
+    # TODO: Initialize real robot connection
+    # adapter = SimToRealAdapter(sim_policy, real_robot)
+
+    # TODO: Collect 1000 steps on real robot
+    # adapter.collect_real_experience(steps=1000)
+
+    # TODO: Fine-tune for 100 iterations
+    # adapter.fine_tune_on_real()
+
+    # TODO: Evaluate on real robot
+    # adapter.evaluate_on_real()
+```
+
+**Acceptance Criteria**:
+- [ ] Successfully connects to real robot
+- [ ] Collects real-world experience without crashes
+- [ ] Fine-tuning loop runs without errors
+- [ ] Policy adapts to real dynamics
+- [ ] Real-world success rate > 70%
+- [ ] Failure modes logged for analysis
+- [ ] Adaptation time < 30 minutes
+
+---
+
+## Exercise 8: Integration Project - Autonomous Warehouse Navigation
+
+**Objective**: Combine Isaac Sim, SLAM, and RL for autonomous warehouse navigation.
+
+**Starter Code**:
+```python
+# warehouse_navigation_integration.py
+from isaac_sim import SimulationApp
+import rclpy
+from nav2_simple_commander.robot_navigator import BasicNavigator
+
+class WarehouseNavigator:
+    def __init__(self, warehouse_map_file):
+        # TODO: Initialize Isaac Sim with warehouse scene
+        # TODO: Initialize ROS 2 node
+        # TODO: Setup Nav2 with pre-built map
+        # TODO: Load trained RL policy
+
+    def run_navigation_task(self, goal_locations):
+        # TODO: For each goal location:
+        # - Use RL policy for local control
+        # - Use Nav2 for global planning
+        # - Fuse sensor data (camera + LiDAR)
+        # - Handle obstacles and failures
+        # - Log navigation metrics
+        pass
+
+    def measure_performance(self):
+        # TODO: Calculate path length vs optimal
+        # TODO: Measure time to completion
+        # TODO: Count collisions
+        # TODO: Report success rate
+        pass
+
+if __name__ == '__main__':
+    navigator = WarehouseNavigator('warehouse_map.yaml')
+
+    # Define 5 goal locations in warehouse
+    goals = [
+        (10, 5, 0),    # Aisle A1
+        (20, 10, 0),   # Aisle B2
+        (15, 15, 0),   # Aisle C1
+        (5, 20, 0),    # Aisle D3
+        (25, 5, 0),    # Aisle A4
+    ]
+
+    # TODO: Run navigation for all goals
+    navigator.run_navigation_task(goals)
+
+    # TODO: Print performance metrics
+    navigator.measure_performance()
+```
+
+**Acceptance Criteria**:
+- [ ] Isaac Sim warehouse scene loads correctly
+- [ ] Nav2 navigates between waypoints
+- [ ] RL policy controls robot locomotion
+- [ ] SLAM maintains position estimate
+- [ ] Completes all 5 waypoints
+- [ ] Path efficiency > 85% (path_length < 1.2 × optimal)
+- [ ] Zero collisions with obstacles
+- [ ] Total navigation time < 10 minutes
+
+---
+
+## Summary & Tips
+
+**Tips for Success**:
+- 🚀 Start with Isaac Sim basics before domain randomization
+- 🧠 Train RL policies on diverse environments for robustness
+- 🗺️ Use pre-built maps for Nav2 until custom mapping works
+- 📊 Log metrics at every step for debugging
+- 🧪 Test incrementally - complete each exercise before next
+- 💾 Save checkpoints frequently during training
+- 🔄 Domain randomization is critical for sim-to-real success
+
+**Next**: Take the [Quiz](../quiz-3) to assess your understanding of Isaac Sim, SLAM, and Reinforcement Learning.
+
+---
+
+**Total Exercise Time**: 3–4 hours
+**Difficulty**: Intermediate to Advanced
+**Prerequisites**: Lessons 3.1–3.3

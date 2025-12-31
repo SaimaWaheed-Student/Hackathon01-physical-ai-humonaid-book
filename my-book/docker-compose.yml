@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # Documentation website
+  docs:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.docs
+    container_name: physical-ai-docs
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    command: npm start
+    restart: unless-stopped
+
+  # Module 1: ROS 2 Fundamentals
+  module-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.module-1
+    container_name: physical-ai-module-1
+    image: physical-ai-book:module-1
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./docs/module-1-ros2:/root/course/module-1:ro
+    environment:
+      - ROS_DISTRO=humble
+    restart: unless-stopped
+    # Run: docker-compose run module-1
+
+  # Module 2: Gazebo Physics Simulation
+  module-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.module-2
+    container_name: physical-ai-module-2
+    image: physical-ai-book:module-2
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./docs/module-2-gazebo:/root/course/module-2:ro
+    environment:
+      - ROS_DISTRO=humble
+    restart: unless-stopped
+    # Requires GPU: docker-compose run --gpus all module-2
+
+  # Module 3: Isaac Sim & Navigation
+  module-3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.module-3
+    container_name: physical-ai-module-3
+    image: physical-ai-book:module-3
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./docs/module-3-isaac:/root/course/module-3:ro
+    environment:
+      - ROS_DISTRO=humble
+    restart: unless-stopped
+    # Requires GPU: docker-compose run --gpus all module-3
+
+  # Module 4: Vision-Language-Action
+  module-4:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.module-4
+    container_name: physical-ai-module-4
+    image: physical-ai-book:module-4
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./docs/module-4-vla:/root/course/module-4:ro
+    environment:
+      - ROS_DISTRO=humble
+    restart: unless-stopped
+    # Requires GPU and API keys: docker-compose run --gpus all module-4

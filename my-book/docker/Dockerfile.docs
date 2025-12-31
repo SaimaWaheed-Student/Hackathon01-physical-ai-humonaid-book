@@ -1,0 +1,29 @@
+# Physical AI & Humanoid Robotics Book - Documentation Website
+# Build: docker build -f docker/Dockerfile.docs -t physical-ai-book:docs .
+# Run:   docker run -p 3000:3000 physical-ai-book:docs
+
+FROM node:20-alpine
+
+LABEL maintainer="Physical AI & Humanoid Robotics Course"
+LABEL description="Documentation Website - Docusaurus"
+
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy documentation files
+COPY docs ./docs
+COPY sidebars.ts ./
+COPY docusaurus.config.ts ./
+COPY src ./src
+
+# Build the site
+RUN npm run build
+
+# Expose port
+EXPOSE 3000
+
+# Default command: start dev server
+CMD ["npm", "start", "--", "--host", "0.0.0.0", "--port", "3000"]

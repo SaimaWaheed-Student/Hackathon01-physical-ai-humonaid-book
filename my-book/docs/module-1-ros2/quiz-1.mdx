@@ -1,0 +1,243 @@
+---
+sidebar_position: 5
+title: Module 1 - Quiz
+---
+
+# Module 1 Quiz: ROS 2 Fundamentals
+
+**Duration**: 15-20 minutes | **Questions**: 10 | **Passing Score**: 8/10 (80%)
+
+Test your understanding of ROS 2 middleware, communication patterns, and robot descriptions.
+
+---
+
+## Question 1: ROS 2 Architecture Layers
+
+**What is the correct order of ROS 2 architecture from bottom to top?**
+
+A) DDS → Application → OS → ROS 2 Middleware
+B) OS → DDS → ROS 2 Middleware → Application
+C) Application → ROS 2 Middleware → DDS → OS
+D) ROS 2 Middleware → DDS → Application → OS
+
+<details>
+<summary>Answer</summary>
+**B) OS → DDS → ROS 2 Middleware → Application**
+
+ROS 2 follows a 4-layer stack: Operating System (Linux/Windows) → DDS (communication protocol) → ROS 2 middleware (rclpy/rclcpp) → Your application code.
+</details>
+
+---
+
+## Question 2: Pub/Sub Communication
+
+**Which statement about ROS 2 topics is FALSE?**
+
+A) Publishers don't know about subscribers
+B) One publisher can have multiple subscribers
+C) Topics guarantee message delivery by default
+D) Topics are asynchronous (fire-and-forget)
+
+<details>
+<summary>Answer</summary>
+**C) Topics guarantee message delivery by default**
+
+Topics use best-effort delivery by default (messages may be lost). You must configure QoS to RELIABLE for guaranteed delivery. This is unlike services which always guarantee delivery.
+</details>
+
+---
+
+## Question 3: When to Use Each Pattern
+
+**You need to query a robot's current battery percentage. Which communication pattern is BEST?**
+
+A) Topic (publish battery status continuously)
+B) Service (request battery status on demand)
+C) Action (goal-based battery query)
+D) Parameter (static configuration)
+
+<details>
+<summary>Answer</summary>
+**B) Service (request battery status on demand)**
+
+Services are perfect for one-shot queries where the client needs an immediate response. A topic would waste bandwidth constantly publishing when not needed. Actions are for long-running goals, not queries.
+</details>
+
+---
+
+## Question 4: Service Communication
+
+**In a ROS 2 service call, which statement is TRUE?**
+
+A) The client can continue processing while waiting for response
+B) The client blocks until the server responds
+C) The server can ignore client requests
+D) Multiple servers can handle the same service
+
+<details>
+<summary>Answer</summary>
+**B) The client blocks until the server responds**
+
+Services are synchronous. The client waits (blocks) for the server's response. Only one server can handle a given service name (though multiple clients can call the same server).
+</details>
+
+---
+
+## Question 5: Action Feedback
+
+**What advantage do Actions have over Services?**
+
+A) Actions are faster
+B) Actions provide feedback during execution
+C) Actions are simpler to implement
+D) Actions guarantee messages won't be lost
+
+<details>
+<summary>Answer</summary>
+**B) Actions provide feedback during execution**
+
+Actions send periodic feedback messages while the goal is executing. Services only return a single response at the end. This makes actions perfect for long-running tasks like navigation.
+</details>
+
+---
+
+## Question 6: URDF Links and Joints
+
+**In URDF, what does a "link" represent?**
+
+A) The movement between two bodies
+B) A rigid body with mass, geometry, and inertia
+C) A connection to the world frame
+D) The visual representation only
+
+<details>
+<summary>Answer</summary>
+**B) A rigid body with mass, geometry, and inertia**
+
+Links are the structural elements. Joints connect links. Each link has visual geometry, collision geometry, and inertial properties. Joints define how links can move relative to each other.
+</details>
+
+---
+
+## Question 7: Joint Types
+
+**A robot wheel that spins continuously without limits would use which joint type?**
+
+A) Revolute
+B) Prismatic
+C) Continuous
+D) Fixed
+
+<details>
+<summary>Answer</summary>
+**C) Continuous**
+
+Continuous joints allow unlimited rotation (perfect for wheels). Revolute joints have min/max angle limits. Prismatic is for linear motion. Fixed means no motion.
+</details>
+
+---
+
+## Question 8: Xacro Purpose
+
+**Why use Xacro instead of plain URDF?**
+
+A) Xacro is faster at runtime
+B) Xacro allows macros and parameters, reducing duplication
+C) Xacro is required by ROS 2
+D) Xacro improves robot physics simulation
+
+<details>
+<summary>Answer</summary>
+**B) Xacro allows macros and parameters, reducing duplication**
+
+Xacro (XML Macros) lets you define reusable components, variables, and conditional blocks. This prevents repetitive code, especially for robots with many identical parts (fingers, legs, wheels). Xacro files are converted to standard URDF at runtime.
+</details>
+
+---
+
+## Question 9: Node Lifecycle
+
+**What is the correct progression of node states?**
+
+A) Active → Inactive → Unconfigured → Active
+B) Unconfigured → Inactive → Active → Unconfigured
+C) Active → Cleanup → Deactivate → Configure
+D) Configured → Running → Stopped → Terminated
+
+<details>
+<summary>Answer</summary>
+**B) Unconfigured → Inactive → Active → Unconfigured**
+
+The lifecycle flow is: Unconfigured (initial) → on_configure() → Inactive (ready but not active) → on_activate() → Active (running) → on_deactivate() → Inactive → on_cleanup() → Unconfigured.
+</details>
+
+---
+
+## Question 10: QoS Settings
+
+**A robot's camera publishes 30 images per second. Which QoS is most appropriate?**
+
+A) Reliable + TRANSIENT_LOCAL (buffer history)
+B) Best-effort + depth=1 (drop old frames)
+C) Reliable + depth=100 (large buffer)
+D) Unreliable + no depth limit
+
+<details>
+<summary>Answer</summary>
+**B) Best-effort + depth=1 (drop old frames)**
+
+For high-rate sensor data (camera, lidar), best-effort is appropriate because:
+1. Losing occasional frames is acceptable (human eye sees 30 FPS anyway)
+2. Small depth (buffer size) prevents accumulated lag
+3. Saves network bandwidth and reduces latency
+
+Critical control data would use Reliable, but sensor streams don't need guarantees.
+</details>
+
+---
+
+## Scoring Guide
+
+| Score | Interpretation |
+|-------|-----------------|
+| 9-10 | Excellent - Ready for Module 2 |
+| 8 | Good - Review difficult topics before Module 2 |
+| 6-7 | Needs Review - Re-read lessons; retry quiz |
+| 0-5 | Restart - Review all lessons carefully |
+
+---
+
+## Answer Key Summary
+
+1. **B** - Architecture layers
+2. **C** - Topic reliability
+3. **B** - Service for queries
+4. **B** - Synchronous blocking
+5. **B** - Action feedback
+6. **B** - Link definition
+7. **C** - Continuous joint
+8. **B** - Xacro purpose
+9. **B** - Lifecycle states
+10. **B** - High-rate sensor QoS
+
+---
+
+## Next Steps
+
+**If you passed (≥8/10)**:
+- ✅ [Go to Module 1 Capstone →](../capstone-1)
+- 📚 [Start Module 2 →](/docs/module-2-gazebo/lesson-2-1-physics)
+
+**If you need review**:
+- 📖 Review [Lesson 1.1](../lesson-1-1-middleware)
+- 📖 Review [Lesson 1.2](../lesson-1-2-topics-services)
+- 📖 Review [Lesson 1.3](../lesson-1-3-urdf)
+- 🎯 Retry [Exercises](../exercises-1)
+
+---
+
+**Quiz Time**: 15-20 minutes
+**Difficulty**: Beginner ✅
+**Prerequisites**: Lessons 1.1-1.3 + Exercises
+
+Good luck! 🚀

@@ -1,0 +1,583 @@
+---
+sidebar_position: 6
+title: Module 3 - Capstone Project
+---
+
+# Module 3 Capstone: Autonomous Warehouse Navigation System
+
+**Duration**: 4-5 hours | **Difficulty**: Advanced | **Prerequisite**: Lessons 3.1–3.3 + Exercises 1–8
+
+## Project Overview
+
+Build a complete autonomous navigation system for a humanoid robot in a simulated warehouse environment. You'll integrate Isaac Sim, SLAM, ROS 2 Nav2, and reinforcement learning to create an intelligent robot that can autonomously navigate to pickup and delivery locations while avoiding obstacles and adapting to dynamic changes.
+
+### Learning Goals
+
+By completing this capstone, you will:
+- Design complex realistic environments in Isaac Sim with domain randomization
+- Implement SLAM for real-time mapping and localization
+- Configure ROS 2 Nav2 for autonomous path planning
+- Train and deploy RL policies for adaptive robot behavior
+- Handle sensor fusion for robust navigation
+- Measure performance metrics and optimize system behavior
+
+---
+
+## Project Architecture
+
+```
+Warehouse Navigation System
+├── Isaac Sim Environment
+│   ├── Warehouse scene (aisles, shelves, obstacles)
+│   ├── Humanoid robot model (differential drive)
+│   ├── Sensors (LiDAR, camera, IMU)
+│   └── Domain randomization (lighting, friction, mass)
+├── ROS 2 Nodes
+│   ├── /robot_controller (Isaac Sim bridge)
+│   ├── /slam_node (mapping and localization)
+│   ├── /nav2_client (path planning and navigation)
+│   ├── /rl_policy_node (learned behavior)
+│   └── /performance_monitor (metrics collection)
+└── Data Collection
+    ├── Trajectories
+    ├── Sensor logs
+    ├── Performance metrics
+    └── Failure analysis
+```
+
+---
+
+## Part 1: Isaac Sim Warehouse Environment
+
+### Warehouse Scene Setup (Python)
+
+```python
+# warehouse_environment.py
+from isaacsim import SimulationApp
+from omni.isaac.core.world import World
+from omni.isaac.core.robots import Robot
+from omni.isaac.core.objects import DynamicCuboid
+import numpy as np
+
+class WarehouseEnvironment:
+    def __init__(self):
+        # Initialize Isaac Sim
+        self.app = SimulationApp({"headless": False})
+        self.world = World(stage_units_in_meters=1.0)
+
+        # Physics configuration
+        self.world.physics_context.enable_gpu_dynamics(True)
+        self.world.physics_context.set_gravity(np.array([0, 0, -9.81]))
+
+    def create_warehouse_layout(self):
+        """Create warehouse with aisles, shelves, and obstacles."""
+        # Ground plane
+        self.world.add_ground_plane()
+
+        # Warehouse shelves (12m × 8m layout)
+        shelf_height = 2.0
+        shelf_depth = 0.5
+
+        # Aisle A (vertical)
+        for i in range(4):
+            x = 2 + i * 3
+            self._add_shelf(x, 2, shelf_height, shelf_depth)
+
+        # Aisle B (perpendicular)
+        for j in range(3):
+            y = 1 + j * 2.5
+            self._add_shelf(8, y, shelf_height, shelf_depth)
+
+    def _add_shelf(self, x, y, height, depth):
+        """Add a single shelf to warehouse."""
+        shelf_pose = [x, y, height/2]
+        shelf_size = [0.3, depth, height]
+
+        shelf = DynamicCuboid(
+            name=f"shelf_{int(x)}_{int(y)}",
+            position=shelf_pose,
+            scale=shelf_size,
+            mass=100.0
+        )
+        self.world.add_object(shelf)
+
+    def add_dynamic_obstacles(self):
+        """Add movable obstacles (boxes, carts) for realism."""
+        # Random boxes scattered in aisles
+        for i in range(5):
+            x = np.random.uniform(1, 10)
+            y = np.random.uniform(0, 8)
+            z = 0.3
+
+            box = DynamicCuboid(
+                name=f"obstacle_{i}",
+                position=[x, y, z],
+                scale=[0.5, 0.5, 0.6],
+                mass=20.0
+            )
+            self.world.add_object(box)
+
+    def add_pickup_delivery_locations(self):
+        """Define pickup and delivery station locations."""
+        return {
+            'pickup': [(2, 1), (5, 3), (8, 5)],
+            'delivery': [(10, 2), (10, 5), (10, 8)]
+        }
+
+    def apply_domain_randomization(self):
+        """Randomize environment for robust learning."""
+        # Randomize friction for all objects
+        friction = np.random.uniform(0.1, 0.8)
+
+        # Randomize lighting
+        for light in self.world.lights:
+            intensity = np.random.uniform(0.5, 2.0)
+            light.set_intensity(intensity)
+
+        # Randomize robot mass
+        mass_scale = np.random.uniform(0.9, 1.1)
+        # Apply to robot body
+
+if __name__ == '__main__':
+    env = WarehouseEnvironment()
+    env.create_warehouse_layout()
+    env.add_dynamic_obstacles()
+    locations = env.add_pickup_delivery_locations()
+    env.apply_domain_randomization()
+    print(f"Warehouse created with pickup: {locations['pickup']}")
+```
+
+---
+
+## Part 2: SLAM Implementation
+
+### SLAM Node (ROS 2 + OpenCV)
+
+```python
+# slam_node.py
+import rclpy
+import cv2
+import numpy as np
+from sensor_msgs.msg import Image, LaserScan
+from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster
+from cv_bridge import CvBridge
+
+class SLAMNode(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('slam_node')
+
+        # Subscribers
+        self.image_sub = self.create_subscription(
+            Image, '/camera/image_raw', self.image_callback, 10
+        )
+        self.scan_sub = self.create_subscription(
+            LaserScan, '/scan', self.scan_callback, 10
+        )
+
+        # Publishers
+        self.map_pub = self.create_publisher(OccupancyGrid, '/map', 1)
+
+        # TF broadcaster for localization
+        self.tf_broadcaster = TransformBroadcaster(self)
+
+        # SLAM state
+        self.orb = cv2.ORB_create(nfeatures=500)
+        self.bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+        self.keyframes = []
+        self.descriptors = []
+        self.estimated_pose = np.array([0, 0, 0])  # x, y, theta
+
+        self.cv_bridge = CvBridge()
+        self.get_logger().info('SLAM node initialized')
+
+    def image_callback(self, msg):
+        """Process camera images for visual SLAM."""
+        image = self.cv_bridge.imgmsg_to_cv2(msg)
+
+        # Detect features
+        kp, des = self.orb.detectAndCompute(image, None)
+
+        if des is None or len(self.keyframes) == 0:
+            self.keyframes.append(image)
+            self.descriptors.append(des)
+            return
+
+        # Find matches with previous frames
+        best_matches = 0
+        best_idx = -1
+
+        for i, prev_des in enumerate(self.descriptors[-5:]):  # Check last 5 frames
+            if prev_des is None:
+                continue
+
+            matches = self.bf_matcher.knnMatch(des, prev_des, k=2)
+            good_matches = 0
+
+            for match_pair in matches:
+                if len(match_pair) == 2:
+                    m, n = match_pair
+                    if m.distance < 0.7 * n.distance:
+                        good_matches += 1
+
+            if good_matches > best_matches:
+                best_matches = good_matches
+                best_idx = i
+
+        # Loop closure detection
+        if best_idx >= 0 and best_matches > 30:
+            self.get_logger().warn(
+                f'Loop closure detected! Current frame matches '
+                f'frame {best_idx}: {best_matches} matches'
+            )
+
+        # Store current frame
+        if len(self.keyframes) % 5 == 0:  # Store every 5th frame
+            self.keyframes.append(image)
+            self.descriptors.append(des)
+
+    def scan_callback(self, msg):
+        """Process LiDAR scans for occupancy grid."""
+        # Convert LiDAR scan to occupancy grid
+        grid = OccupancyGrid()
+        grid.header.frame_id = 'map'
+        grid.header.stamp = self.get_clock().now().to_msg()
+        grid.info.resolution = 0.05  # 5cm per cell
+        grid.info.width = 200
+        grid.info.height = 200
+        grid.info.origin.position.x = -5.0
+        grid.info.origin.position.y = -5.0
+
+        # Convert ranges to grid
+        grid.data = self._lidar_to_occupancy(msg)
+
+        # Publish map
+        self.map_pub.publish(grid)
+
+        # Broadcast robot pose
+        transform = TransformStamped()
+        transform.header.stamp = self.get_clock().now().to_msg()
+        transform.header.frame_id = 'map'
+        transform.child_frame_id = 'base_link'
+
+        # Set estimated pose
+        transform.transform.translation.x = float(self.estimated_pose[0])
+        transform.transform.translation.y = float(self.estimated_pose[1])
+        transform.transform.translation.z = 0.0
+
+        # Quaternion from yaw
+        yaw = self.estimated_pose[2]
+        transform.transform.rotation.z = np.sin(yaw / 2)
+        transform.transform.rotation.w = np.cos(yaw / 2)
+
+        self.tf_broadcaster.sendTransform(transform)
+
+    def _lidar_to_occupancy(self, scan_msg):
+        """Convert LaserScan to occupancy grid."""
+        grid_size = 200
+        grid = [0] * (grid_size * grid_size)
+
+        for i, range_val in enumerate(scan_msg.ranges):
+            if range_val < scan_msg.range_max:
+                angle = scan_msg.angle_min + i * scan_msg.angle_increment
+                x = range_val * np.cos(angle)
+                y = range_val * np.sin(angle)
+
+                # Convert to grid coordinates
+                grid_x = int((x + 5.0) / 0.05)
+                grid_y = int((y + 5.0) / 0.05)
+
+                if 0 <= grid_x < grid_size and 0 <= grid_y < grid_size:
+                    grid[grid_y * grid_size + grid_x] = 100
+
+        return grid
+
+def main(args=None):
+    rclpy.init(args=args)
+    slam_node = SLAMNode()
+    rclpy.spin(slam_node)
+    slam_node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Part 3: Navigation Client
+
+### Nav2 Navigation Controller
+
+```python
+# navigation_client.py
+import rclpy
+from nav2_simple_commander.robot_navigator import BasicNavigator
+from geometry_msgs.msg import PoseStamped
+import tf_transformations
+import time
+
+class WarehouseNavigationController:
+    def __init__(self):
+        rclpy.init()
+        self.navigator = BasicNavigator()
+        self.task_count = 0
+        self.total_distance = 0
+        self.collision_count = 0
+
+    def navigate_to_location(self, x, y, theta=0):
+        """Navigate to a specific location."""
+        goal_pose = PoseStamped()
+        goal_pose.header.frame_id = 'map'
+        goal_pose.header.stamp = self.navigator._node.get_clock().now().to_msg()
+
+        goal_pose.pose.position.x = x
+        goal_pose.pose.position.y = y
+        goal_pose.pose.position.z = 0.0
+
+        # Convert yaw to quaternion
+        quaternion = tf_transformations.quaternion_from_euler(0, 0, theta)
+        goal_pose.pose.orientation.x = quaternion[0]
+        goal_pose.pose.orientation.y = quaternion[1]
+        goal_pose.pose.orientation.z = quaternion[2]
+        goal_pose.pose.orientation.w = quaternion[3]
+
+        self.navigator.goToPose(goal_pose)
+
+        # Monitor navigation
+        nav_start = time.time()
+        while not self.navigator.isTaskComplete():
+            feedback = self.navigator.getFeedback()
+            if feedback:
+                nav_time = time.time() - nav_start
+                print(f'Distance remaining: {feedback.distance_remaining:.2f}m, '
+                      f'Time elapsed: {nav_time:.1f}s')
+                time.sleep(0.1)
+
+        result = self.navigator.getResult()
+        return result
+
+    def run_warehouse_mission(self, pickup_points, delivery_points):
+        """Execute full warehouse pickup/delivery mission."""
+        assert len(pickup_points) == len(delivery_points)
+
+        for i, (pickup, delivery) in enumerate(zip(pickup_points, delivery_points)):
+            print(f'\n--- Task {i+1}: Pickup {pickup} → Delivery {delivery} ---')
+
+            # Navigate to pickup
+            result = self.navigate_to_location(pickup[0], pickup[1])
+            if result != 'success':
+                self.navigator.get_logger().warn('Pickup navigation failed!')
+                continue
+
+            print('Arrived at pickup location')
+            time.sleep(1)  # Simulate pickup action
+
+            # Navigate to delivery
+            result = self.navigate_to_location(delivery[0], delivery[1])
+            if result != 'success':
+                self.navigator.get_logger().warn('Delivery navigation failed!')
+                continue
+
+            print('Arrived at delivery location')
+            time.sleep(1)  # Simulate delivery action
+
+            self.task_count += 1
+
+    def report_performance(self):
+        """Generate performance report."""
+        print('\n=== MISSION SUMMARY ===')
+        print(f'Tasks Completed: {self.task_count}')
+        print(f'Total Distance: {self.total_distance:.2f}m')
+        print(f'Collision Count: {self.collision_count}')
+
+        if self.task_count > 0:
+            print(f'Success Rate: {(self.task_count / 5 * 100):.1f}%')
+
+if __name__ == '__main__':
+    controller = WarehouseNavigationController()
+
+    # Define 5 pickup/delivery tasks
+    pickups = [(2, 1), (5, 3), (2, 5), (8, 2), (5, 6)]
+    deliveries = [(10, 2), (10, 5), (10, 7), (10, 3), (10, 8)]
+
+    controller.run_warehouse_mission(pickups, deliveries)
+    controller.report_performance()
+```
+
+---
+
+## Part 4: Reinforcement Learning Policy
+
+### Policy Training and Deployment
+
+```python
+# rl_warehouse_policy.py
+import torch
+import torch.nn as nn
+import numpy as np
+from collections import deque
+
+class WarehousePolicy(nn.Module):
+    def __init__(self, state_dim=12, action_dim=2):
+        super().__init__()
+        self.fc1 = nn.Linear(state_dim, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.policy_head = nn.Linear(128, action_dim)
+        self.value_head = nn.Linear(128, 1)
+        self.relu = nn.ReLU()
+
+    def forward(self, state):
+        x = self.relu(self.fc1(state))
+        x = self.relu(self.fc2(x))
+        action_logits = torch.tanh(self.policy_head(x)) * 2  # Action range [-2, 2]
+        value = self.value_head(x)
+        return action_logits, value
+
+class RLPolicyTrainer:
+    def __init__(self, state_dim=12, action_dim=2):
+        self.policy = WarehousePolicy(state_dim, action_dim)
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=3e-4)
+        self.memory = deque(maxlen=10000)
+
+    def collect_experience(self, environment, num_episodes=100):
+        """Collect training experience from environment."""
+        episode_rewards = []
+
+        for episode in range(num_episodes):
+            state = environment.reset()
+            done = False
+            ep_reward = 0
+
+            while not done:
+                # Get action from policy
+                state_tensor = torch.FloatTensor(state)
+                with torch.no_grad():
+                    action, _ = self.policy(state_tensor)
+
+                # Execute action
+                next_state, reward, done = environment.step(action.numpy())
+
+                # Store transition
+                self.memory.append((state, action, reward, next_state, done))
+
+                ep_reward += reward
+                state = next_state
+
+            episode_rewards.append(ep_reward)
+
+            if (episode + 1) % 10 == 0:
+                avg_reward = np.mean(episode_rewards[-10:])
+                print(f'Episode {episode+1}: Avg Reward = {avg_reward:.2f}')
+
+        return episode_rewards
+
+    def train_policy(self, num_epochs=10):
+        """Train policy using collected experience."""
+        for epoch in range(num_epochs):
+            batch = list(self.memory)[-512:]  # Sample recent batch
+
+            if len(batch) < 512:
+                continue
+
+            states = torch.FloatTensor([t[0] for t in batch])
+            actions = torch.FloatTensor([t[1] for t in batch])
+            rewards = torch.FloatTensor([t[2] for t in batch])
+            next_states = torch.FloatTensor([t[3] for t in batch])
+            dones = torch.FloatTensor([1-t[4] for t in batch])
+
+            # Compute advantages
+            _, values = self.policy(states)
+            _, next_values = self.policy(next_states)
+
+            advantages = rewards + 0.99 * next_values.squeeze() * dones - values.squeeze()
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+            # Policy loss
+            action_dists, _ = self.policy(states)
+            mse_loss = nn.MSELoss()(action_dists, actions)
+
+            # Value loss
+            value_loss = ((values.squeeze() - rewards) ** 2).mean()
+
+            loss = mse_loss + 0.5 * value_loss
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+            if (epoch + 1) % 5 == 0:
+                print(f'Epoch {epoch+1}: Loss = {loss.item():.4f}')
+
+    def save_policy(self, path='warehouse_policy.pth'):
+        """Save trained policy."""
+        torch.save(self.policy.state_dict(), path)
+        print(f'Policy saved to {path}')
+
+    def load_policy(self, path='warehouse_policy.pth'):
+        """Load trained policy."""
+        self.policy.load_state_dict(torch.load(path))
+        print(f'Policy loaded from {path}')
+```
+
+---
+
+## Evaluation Criteria
+
+Your capstone will be evaluated on:
+
+### Functionality (40 points)
+- [ ] Isaac Sim environment loads without errors
+- [ ] SLAM creates accurate occupancy map
+- [ ] Nav2 plans collision-free paths
+- [ ] RL policy controls robot locomotion
+- [ ] System completes at least 3/5 warehouse tasks
+
+### Performance Metrics (30 points)
+- [ ] Path efficiency > 85% (path_length ≤ 1.2 × optimal)
+- [ ] Average task completion time < 3 minutes
+- [ ] Success rate > 80% (4/5 tasks completed)
+- [ ] Zero collisions with shelves
+- [ ] Graceful handling of dynamic obstacles
+
+### Code Quality (20 points)
+- [ ] Well-documented code with comments
+- [ ] Proper ROS 2 node structure
+- [ ] Error handling and logging
+- [ ] Modular, reusable components
+
+### Documentation (10 points)
+- [ ] Project overview and architecture diagram
+- [ ] Performance analysis and metrics
+- [ ] Lessons learned and improvements
+- [ ] Reproducible setup instructions
+
+---
+
+## Submission Checklist
+
+- [ ] Complete warehouse environment in Isaac Sim
+- [ ] Working SLAM node publishing occupancy grid
+- [ ] Nav2 client navigating to multiple waypoints
+- [ ] Trained RL policy achieving > 20% reward improvement
+- [ ] Performance report with metrics
+- [ ] Code commits with clear messages
+- [ ] README with setup and execution instructions
+
+---
+
+## Tips for Success
+
+1. **Start with Navigation**: Get Nav2 working before adding RL
+2. **Iterative Domain Randomization**: Start minimal, gradually add randomization
+3. **Monitor Metrics Continuously**: Log pose, distance, time for every task
+4. **Handle Failure Gracefully**: Implement recovery behaviors
+5. **Benchmark Incrementally**: Compare your results to each module's best practices
+6. **Test in Varied Conditions**: Run with different obstacle configurations
+
+---
+
+**Total Project Duration**: 4–5 hours
+**Difficulty**: Advanced
+**Prerequisites**: Lessons 3.1–3.3 + All Module 3 exercises

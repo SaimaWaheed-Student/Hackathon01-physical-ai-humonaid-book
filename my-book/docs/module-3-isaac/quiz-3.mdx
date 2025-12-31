@@ -1,0 +1,212 @@
+---
+sidebar_position: 5
+title: Module 3 - Quiz
+---
+
+# Module 3 Quiz: Isaac Sim, SLAM & Reinforcement Learning
+
+**Duration**: 20-25 minutes | **Questions**: 10 | **Passing Score**: 8/10 (80%)
+
+Test your understanding of Isaac Sim simulation, SLAM algorithms, and reinforcement learning for robotics.
+
+---
+
+## Question 1: Isaac Sim vs Gazebo
+
+**Which advantage does Isaac Sim provide over Gazebo for robotics?**
+
+A) Lower computational requirements
+B) GPU-accelerated physics and ray-tracing for realistic rendering
+C) Better ROS 2 integration out of the box
+D) Simpler setup with no NVIDIA dependencies
+
+<details>
+<summary>Answer</summary>
+**B) GPU-accelerated physics and ray-tracing for realistic rendering**
+
+Isaac Sim runs on NVIDIA GPUs providing real-time photorealistic rendering and physics. This enables better domain randomization and synthetic data generation for training ML models. Gazebo is more lightweight but visually less realistic.
+</details>
+
+---
+
+## Question 2: Domain Randomization Purpose
+
+**What is the primary goal of domain randomization in sim-to-real transfer?**
+
+A) Reduce simulation time
+B) Make simulation harder for the agent
+C) Train policies robust to real-world variations they haven't seen
+D) Decrease computational requirements
+
+<details>
+<summary>Answer</summary>
+**C) Train policies robust to real-world variations they haven't seen**
+
+Domain randomization randomizes physics (mass, friction), visual properties (textures, lighting), and sensor noise during training. This prevents the policy from overfitting to specific simulation parameters, making it more robust when deployed on real hardware.
+</details>
+
+---
+
+## Question 3: Synthetic Data Generation
+
+**When generating synthetic datasets for training object detectors, which parameter is MOST critical for diversity?**
+
+A) Image resolution
+B) Number of frames
+C) Domain randomization (physics, lighting, textures)
+D) Frame rate
+
+<details>
+<summary>Answer</summary>
+**C) Domain randomization (physics, lighting, textures)**
+
+Quality synthetic data requires diverse visual conditions: randomized lighting, camera angles, object textures, and backgrounds. A well-randomized 1000-frame dataset is more valuable than 10,000 identical frames. Variation is key to preventing overfitting.
+</details>
+
+---
+
+## Question 4: Loop Closure in SLAM
+
+**What does loop closure detection accomplish in SLAM systems?**
+
+A) Detects when robot leaves a room
+B) Detects when robot revisits a previously mapped location
+C) Closes loops in PID controllers
+D) Prevents robot from moving in circles
+
+<details>
+<summary>Answer</summary>
+**B) Detects when robot revisits a previously mapped location**
+
+Loop closure is critical for SLAM: when the robot returns to a previously mapped area, it detects this and corrects accumulated drift in its position and map. Without loop closure, odometry error accumulates over time.
+</details>
+
+---
+
+## Question 5: SLAM Feature Detectors
+
+**Which feature detector is robust to scale and rotation changes in SLAM?**
+
+A) Harris corners
+B) SIFT (Scale-Invariant Feature Transform)
+C) Canny edges
+D) Color blobs
+
+<details>
+<summary>Answer</summary>
+**B) SIFT (Scale-Invariant Feature Transform)**
+
+SIFT detects features that remain consistent across scale changes, rotations, and lighting variations. This makes it ideal for loop closure detection. ORB is a faster alternative with good scale/rotation invariance. Harris corners are fast but not scale-invariant.
+</details>
+
+---
+
+## Question 6: Costmap Layers
+
+**In Nav2, what is the purpose of the inflation layer in the costmap?**
+
+A) Reduce computational cost
+B) Create a safety buffer around obstacles
+C) Speed up path planning
+D) Smooth obstacle boundaries
+
+<details>
+<summary>Answer</summary>
+**B) Create a safety buffer around obstacles**
+
+The inflation layer expands obstacle costs outward from detected obstacles, creating a safety margin. A robot with radius 0.25m needs inflation_radius ≥ 0.25m to prevent collisions. Static and obstacle layers detect obstacles; inflation layer keeps robot away from them.
+</details>
+
+---
+
+## Question 7: Markov Decision Process (MDP)
+
+**In an MDP for robot navigation, what does the state typically include?**
+
+A) Only robot position (x, y)
+B) Robot position, orientation, velocities, and sensor observations
+C) Only goal location
+D) Only obstacles nearby
+
+<details>
+<summary>Answer</summary>
+**B) Robot position, orientation, velocities, and sensor observations**
+
+The state must be sufficient to make optimal decisions: position and heading for navigation, velocities for dynamics, and sensor readings (LiDAR, cameras) for environmental awareness. Incomplete state information leads to suboptimal policies.
+</details>
+
+---
+
+## Question 8: PPO Clipping Mechanism
+
+**What problem does PPO's clipping mechanism solve in policy gradient methods?**
+
+A) Prevents excessive value function oscillation
+B) Prevents policy from changing too drastically in one update
+C) Reduces variance in gradient estimates
+D) Accelerates convergence speed
+
+<details>
+<summary>Answer</summary>
+**B) Prevents policy from changing too drastically in one update**
+
+PPO clips the probability ratio between old and new policies to [0.8, 1.2], preventing catastrophic policy updates. Without clipping, high advantage estimates could cause excessively large policy changes, breaking training stability. This makes PPO more stable than vanilla policy gradient.
+</details>
+
+---
+
+## Question 9: Reward Shaping in RL
+
+**When training a navigation policy with RL, what reward structure encourages efficient movement?**
+
+A) +1 for reaching goal, -1 for collision, 0 otherwise
+B) +reward_to_goal - penalty_action_cost - penalty_collision
+C) Reward proportional to distance traveled
+D) Random rewards
+
+<details>
+<summary>Answer</summary>
+**B) +reward_to_goal - penalty_action_cost - penalty_collision**
+
+Effective reward shaping combines: positive reward for progress toward goal, penalty for wasted effort (action cost), and penalty for collisions. Without action cost, robot might move inefficiently. Without progress reward, no guidance toward goal.
+</details>
+
+---
+
+## Question 10: Sim-to-Real Transfer Challenges
+
+**Which factor MOST impacts success of sim-to-real transfer for learned policies?**
+
+A) Using larger neural networks
+B) Training longer in simulation
+C) Matching simulation parameters to real-world (friction, mass, sensor noise)
+D) Using more training environments
+
+<details>
+<summary>Answer</summary>
+**C) Matching simulation parameters to real-world (friction, mass, sensor noise)**
+
+Sim-to-real succeeds when simulation accurately models real physics and sensors. Domain randomization helps, but fundamental parameter mismatch (friction coefficient, motor response) causes failures. Modern approaches use: accurate sim parameters + domain randomization + online adaptation on real robot.
+</details>
+
+---
+
+## Summary
+
+**Key Takeaways**:
+- ✅ Isaac Sim provides photorealistic rendering for better training data
+- ✅ Domain randomization prevents overfitting to simulation
+- ✅ SLAM loop closure corrects long-term drift
+- ✅ Nav2 costmaps handle obstacle avoidance
+- ✅ RL requires careful reward design and policy constraints
+- ✅ Sim-to-real requires accurate simulation and careful adaptation
+
+**Next**: Continue with [Module 4: Voice-Language Models](../module-4-vla/)
+
+---
+
+**Quiz Statistics**:
+- **Total Questions**: 10
+- **Points per Question**: 10
+- **Passing Score**: 80% (8/10)
+- **Recommended Review**: Lessons 3.1–3.3

@@ -1,0 +1,809 @@
+---
+sidebar_position: 2
+title: Lesson 1.2 - Topics, Services & Actions Deep Dive
+---
+
+# Lesson 1.2: Topics, Services & Actions Deep Dive
+
+**Duration**: ~3.5 hours | **Pages**: 22 | **Difficulty**: Beginner
+
+## Learning Objectives
+
+By the end of this lesson, you will:
+- ✅ Master publish/subscribe topics and QoS configuration
+- ✅ Implement synchronous services (client-server request/reply)
+- ✅ Build asynchronous actions for long-running goals
+- ✅ Choose the right communication pattern for each use case
+- ✅ Debug communication issues with ROS 2 CLI tools
+- ✅ Design robust inter-process communication in distributed systems
+
+---
+
+## 📚 Quick Review: Why Communication Patterns Matter
+
+Last lesson, we learned that ROS 2 provides **three communication patterns**. Let's go deeper:
+
+| Pattern | Use Case | Sync? | Delivery Guarantee |
+|---------|----------|-------|-------------------|
+| **Topics** | Sensor data, status streams | Async | Best-effort |
+| **Services** | Queries, commands, one-time requests | Sync | Reliable |
+| **Actions** | Long-running goals, navigation, manipulation | Async | Reliable |
+
+**Real Example**: A robot picking up a cup
+- 📸 **Topic**: Camera publishes images at 30 Hz (`/camera/image_raw`)
+- 🔍 **Service**: Vision node calls `/detect_cup` to find cup location (request/response)
+- 🎯 **Action**: Gripper executes "pick_up_cup" action with feedback (progress %) and result
+
+---
+
+## 🔄 Section 1: Topics Deep Dive (Pub/Sub with QoS)
+
+### What is a Topic?
+
+A **topic** is an **async, decoupled, one-way data stream**. Publishers send data; subscribers receive it.
+
+```
+Publisher (sensor driver)
+         ↓ (publishes at 30 Hz)
+    /camera/image_raw (Topic)
+         ↓ (subscribes)
+    Subscriber 1 (perception node)
+    Subscriber 2 (visualization node)
+    Subscriber 3 (recording node)
+```
+
+**Key idea**: Publishers don't know or care how many subscribers exist. Subscribers don't need to know when publishers will send data. Total decoupling.
+
+### Topic Naming Convention
+
+Topics follow a hierarchical naming scheme:
+
+```
+/robot/camera/image_raw
+ ↑      ↑      ↑      ↑
+ |      |      |      └─ Data type (image_raw, depth, etc.)
+ |      |      └──────── Specific component
+ |      └──────────────── System/namespace
+ └─────────────────────── Root (always starts with /)
+```
+
+**Good practice**: Group related topics under a namespace.
+
+```python
+# BAD: Unclear what this data is
+pub = node.create_publisher(String, '/data', 10)
+
+# GOOD: Clear hierarchy and purpose
+pub = node.create_publisher(Image, '/robot/left_arm/camera/image_raw', 10)
+pub = node.create_publisher(Float32, '/robot/left_arm/joint_temperature', 10)
+pub = node.create_publisher(Int32, '/robot/battery_percent', 10)
+```
+
+### Understanding QoS (Quality of Service)
+
+**QoS** controls HOW messages are delivered. Think of it like mail delivery options:
+
+- 📬 **Best-effort**: Fire-and-forget (cheap, fast, but messages may be lost)
+- 📦 **Reliable**: Guaranteed delivery (slower, but messages always arrive)
+
+```python
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+
+# Create a topic with custom QoS
+qos = QoSProfile(
+    reliability=ReliabilityPolicy.RELIABLE,  # Or BEST_EFFORT
+    durability=DurabilityPolicy.VOLATILE,    # Or TRANSIENT_LOCAL
+    depth=10                                  # Queue size (buffer)
+)
+
+pub = node.create_publisher(String, '/my_topic', qos)
+```
+
+**When to use each**:
+
+| QoS Setting | Use Case | Example |
+|-------------|----------|---------|
+| Best-effort | High-rate sensor data (video, lidar) | `/camera/image_raw` (30 Hz) |
+| Reliable | Critical control data | `/motor/command` (must not lose commands) |
+| TRANSIENT_LOCAL | Late subscribers need historical data | `/diagnostics` (want last state) |
+
+### Practical Topic Example: Multi-Subscriber System
+
+Create a file `multi_publisher.py`:
+
+```python
+# src/my_robot/my_robot/multi_publisher.py
+import rclpy
+from std_msgs.msg import Float32, String, Int32
+import time
+import random
+
+class SensorPublisher(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('sensor_publisher')
+
+        # Create multiple publishers for different sensor data
+        self.battery_pub = self.create_publisher(Float32, '/robot/battery_percent', 10)
+        self.temp_pub = self.create_publisher(Float32, '/robot/motor_temperature', 10)
+        self.status_pub = self.create_publisher(String, '/robot/status', 10)
+
+        # Timer that fires every 1 second
+        self.timer = self.create_timer(1.0, self.timer_callback)
+        self.battery_level = 100.0
+
+    def timer_callback(self):
+        # Publish battery level (decreasing over time)
+        self.battery_level -= random.uniform(0.1, 0.5)
+        battery_msg = Float32()
+        battery_msg.data = max(0.0, self.battery_level)
+        self.battery_pub.publish(battery_msg)
+
+        # Publish motor temperature
+        temp_msg = Float32()
+        temp_msg.data = 45.0 + random.uniform(-2.0, 5.0)
+        self.temp_pub.publish(temp_msg)
+
+        # Publish status
+        status = "RUNNING" if self.battery_level > 10 else "LOW_BATTERY"
+        status_msg = String()
+        status_msg.data = status
+        self.status_pub.publish(status_msg)
+
+        self.get_logger().info(f'Battery: {battery_msg.data:.1f}% | Temp: {temp_msg.data:.1f}°C | Status: {status}')
+
+def main():
+    rclpy.init()
+    node = SensorPublisher()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+Create a multi-subscriber `multi_subscriber.py`:
+
+```python
+# src/my_robot/my_robot/multi_subscriber.py
+import rclpy
+from std_msgs.msg import Float32, String
+
+class RobotMonitor(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('robot_monitor')
+
+        # Subscribe to multiple topics
+        self.battery_sub = self.create_subscription(Float32, '/robot/battery_percent', self.battery_callback, 10)
+        self.temp_sub = self.create_subscription(Float32, '/robot/motor_temperature', self.temp_callback, 10)
+        self.status_sub = self.create_subscription(String, '/robot/status', self.status_callback, 10)
+
+        self.latest_battery = None
+        self.latest_temp = None
+        self.latest_status = None
+
+    def battery_callback(self, msg):
+        self.latest_battery = msg.data
+        self.check_alerts()
+
+    def temp_callback(self, msg):
+        self.latest_temp = msg.data
+        self.check_alerts()
+
+    def status_callback(self, msg):
+        self.latest_status = msg.data
+
+    def check_alerts(self):
+        if self.latest_battery is not None:
+            if self.latest_battery < 20:
+                self.get_logger().warn(f'LOW BATTERY: {self.latest_battery:.1f}%')
+
+        if self.latest_temp is not None:
+            if self.latest_temp > 60:
+                self.get_logger().error(f'OVERHEATING: {self.latest_temp:.1f}°C')
+
+        # Log current state
+        self.get_logger().info(f'[Monitor] Battery: {self.latest_battery} | Temp: {self.latest_temp} | Status: {self.latest_status}')
+
+def main():
+    rclpy.init()
+    node = RobotMonitor()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Run in two terminals**:
+```bash
+# Terminal 1
+python3 multi_publisher.py
+
+# Terminal 2
+python3 multi_subscriber.py
+```
+
+---
+
+## 🔌 Section 2: Services (Synchronous Request/Reply)
+
+### What is a Service?
+
+A **service** is a **sync, one-to-one, request/reply pattern**. Client sends request; server responds immediately.
+
+```
+Client (query node)
+    ↓ (sends request)
+    /my_service
+    ↑ (waits for response)
+    Server (processing node)
+```
+
+**Key differences from topics**:
+- ✅ Client **waits** for response (blocking)
+- ✅ Guaranteed delivery
+- ❌ One request at a time (sequential)
+- ❌ Server must respond eventually or client times out
+
+### When to Use Services
+
+| Use Case | Example |
+|----------|---------|
+| **Queries** | Get robot configuration, get current joint angles |
+| **Commands** | Set motor torque, enable/disable system |
+| **Computations** | Inverse kinematics, path planning (one-shot) |
+| **Resets** | Reset simulator, reset sensor calibration |
+
+### Service Implementation: Adding Two Numbers
+
+First, define the service interface. Create `AddTwoInts.srv`:
+
+```
+# srv/AddTwoInts.srv
+int64 a
+int64 b
+---
+int64 sum
+```
+
+**Note**: The `---` separates request (above) from response (below).
+
+Now create a service **server** (processes requests):
+
+```python
+# src/my_robot/my_robot/simple_service_server.py
+import rclpy
+from example_interfaces.srv import AddTwoInts
+
+class AddTwoIntsServer(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('add_two_ints_server')
+        self.srv = self.create_service(AddTwoInts, '/add_two_ints', self.add_callback)
+        self.get_logger().info('Add Two Ints Service started')
+
+    def add_callback(self, request, response):
+        response.sum = request.a + request.b
+        self.get_logger().info(f'Received request: {request.a} + {request.b} = {response.sum}')
+        return response
+
+def main():
+    rclpy.init()
+    node = AddTwoIntsServer()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+Now create a service **client** (makes requests):
+
+```python
+# src/my_robot/my_robot/simple_service_client.py
+import rclpy
+from example_interfaces.srv import AddTwoInts
+import time
+
+class AddTwoIntsClient(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('add_two_ints_client')
+        self.client = self.create_client(AddTwoInts, '/add_two_ints')
+
+        # Wait for service to be available
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Service not available, waiting...')
+
+    def send_request(self, a, b):
+        request = AddTwoInts.Request()
+        request.a = a
+        request.b = b
+
+        # Call service asynchronously
+        self.future = self.client.call_async(request)
+
+def main():
+    rclpy.init()
+    client = AddTwoIntsClient()
+
+    # Send a request
+    client.send_request(5, 3)
+
+    # Wait for response
+    while rclpy.ok():
+        if client.future.done():
+            try:
+                response = client.future.result()
+                client.get_logger().info(f'Result: 5 + 3 = {response.sum}')
+                break
+            except Exception as e:
+                client.get_logger().error(f'Service call failed: {e}')
+                break
+        rclpy.spin_once(client, timeout_sec=0.1)
+
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Run in two terminals**:
+```bash
+# Terminal 1: Start server
+python3 simple_service_server.py
+
+# Terminal 2: Call service
+python3 simple_service_client.py
+```
+
+### Advanced: Synchronous Service Call (Blocking)
+
+If you want to **block and wait** for a response (easier but can freeze your node):
+
+```python
+# Synchronous (blocking) service call
+try:
+    response = client.call(request)  # Blocks until response arrives
+    print(f'Result: {response.sum}')
+except Exception as e:
+    print(f'Service call failed: {e}')
+```
+
+---
+
+## 🎯 Section 3: Actions (Asynchronous Goals with Feedback)
+
+### What is an Action?
+
+An **action** is a **goal-based, long-running, feedback-enabled pattern**. Client sends a goal; server sends periodic feedback and eventual result.
+
+```
+Client (goal sender)
+    ↓ (sends goal)
+    /my_action
+    ↑ (feedback + result)
+    Server (goal executor)
+```
+
+**Why Actions?**
+- 🎯 Perfect for tasks that take time (navigation, manipulation, perception)
+- 📊 Server sends **feedback** (progress %) during execution
+- ⏸️ Client can **cancel** at any time
+- ✅ Guaranteed completion or cancellation
+
+### Action Definition
+
+Create `MoveRobot.action`:
+
+```
+# action/MoveRobot.action
+# Goal: where to move
+geometry_msgs/Pose target_pose
+---
+# Result: was it successful?
+bool success
+string message
+---
+# Feedback: progress updates
+int32 progress_percent
+string current_phase
+```
+
+**Note**:
+- First section: Goal (what the client sends)
+- Second section (after first `---`): Result (what the client gets at end)
+- Third section (after second `---`): Feedback (what the server sends periodically)
+
+### Action Server Implementation
+
+```python
+# src/my_robot/my_robot/move_robot_action_server.py
+import rclpy
+from rclpy.action import ActionServer
+from rclpy.action import GoalResponse, CancelResponse
+from rclpy.executors import MultiThreadedExecutor
+from example_interfaces.action import Fibonacci
+import time
+
+class MoveRobotActionServer:
+    def __init__(self):
+        self.node = rclpy.create_node('move_robot_action_server')
+        self.action_server = ActionServer(
+            self.node,
+            Fibonacci,  # Action type
+            'move_robot',  # Action name
+            self.execute_callback,
+            goal_callback=self.goal_callback,
+            cancel_callback=self.cancel_callback
+        )
+        self.get_logger = self.node.get_logger
+
+    def goal_callback(self, goal_request):
+        """Accept or reject incoming goals"""
+        self.get_logger().info(f'Received goal request: {goal_request}')
+        # Always accept goals (or add logic to reject certain goals)
+        return GoalResponse.ACCEPT
+
+    def cancel_callback(self, goal_handle):
+        """Handle cancellation requests"""
+        self.get_logger().info('Received cancel request')
+        # Always allow cancellation
+        return CancelResponse.ACCEPT
+
+    def execute_callback(self, goal_handle):
+        """Execute the goal"""
+        self.get_logger().info('Executing goal...')
+
+        # Simulate robot movement over 10 seconds
+        for i in range(10):
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                self.get_logger().info('Goal was canceled')
+                return Fibonacci.Result()
+
+            # Send feedback every second
+            feedback = Fibonacci.Feedback()
+            feedback.partial_sequence = list(range(i + 1))
+            goal_handle.publish_feedback(feedback)
+            self.get_logger().info(f'Publishing feedback: {feedback.partial_sequence}')
+
+            time.sleep(1)
+
+        # Goal succeeded
+        goal_handle.succeed()
+        result = Fibonacci.Result()
+        result.sequence = list(range(10))
+        self.get_logger().info('Goal succeeded!')
+        return result
+
+def main():
+    rclpy.init()
+    server = MoveRobotActionServer()
+
+    executor = MultiThreadedExecutor()
+    executor.add_node(server.node)
+    executor.spin()
+
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### Action Client Implementation
+
+```python
+# src/my_robot/my_robot/move_robot_action_client.py
+import rclpy
+from rclpy.action import ActionClient
+from example_interfaces.action import Fibonacci
+
+class MoveRobotActionClient:
+    def __init__(self):
+        self.node = rclpy.create_node('move_robot_action_client')
+        self.action_client = ActionClient(self.node, Fibonacci, 'move_robot')
+        self.get_logger = self.node.get_logger
+
+    def send_goal(self):
+        """Send a goal to the action server"""
+        # Wait for action server to be available
+        self.get_logger().info('Waiting for action server...')
+        self.action_client.wait_for_server()
+
+        # Create goal
+        goal = Fibonacci.Goal()
+        goal.order = 10
+
+        # Send goal asynchronously
+        self.get_logger().info('Sending goal...')
+        self.send_goal_future = self.action_client.send_goal_async(
+            goal,
+            feedback_callback=self.feedback_callback
+        )
+        self.send_goal_future.add_done_callback(self.goal_response_callback)
+
+    def goal_response_callback(self, future):
+        """Handle response to goal request"""
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().info('Goal rejected')
+            return
+
+        self.get_logger().info('Goal accepted!')
+
+        # Request result
+        self.result_future = goal_handle.get_result_async()
+        self.result_future.add_done_callback(self.result_callback)
+
+    def feedback_callback(self, feedback):
+        """Handle feedback from action server"""
+        self.get_logger().info(f'Feedback received: {feedback.feedback.partial_sequence}')
+
+    def result_callback(self, future):
+        """Handle final result"""
+        result = future.result().result
+        self.get_logger().info(f'Goal succeeded! Result: {result.sequence}')
+
+def main():
+    rclpy.init()
+    client = MoveRobotActionClient()
+    client.send_goal()
+
+    # Keep spinning to receive feedback and result
+    rclpy.spin(client.node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Run in two terminals**:
+```bash
+# Terminal 1: Start action server
+python3 move_robot_action_server.py
+
+# Terminal 2: Send goal from client
+python3 move_robot_action_client.py
+```
+
+---
+
+## 📊 Section 4: Communication Pattern Comparison
+
+Here's a detailed comparison to help you choose:
+
+| Aspect | Topic | Service | Action |
+|--------|-------|---------|--------|
+| **Communication Type** | Async, one-way | Sync, request/reply | Async, goal-based |
+| **Client Blocks?** | No (subscriber receives when ready) | Yes (waits for response) | No (gets feedback + result async) |
+| **Delivery Guarantee** | Best-effort (configurable) | Reliable | Reliable |
+| **One-to-One?** | No (many publishers/subscribers) | One server, many clients | One server, many clients |
+| **Use Case** | Streaming data, sensors | Queries, commands | Long-running tasks |
+| **Example** | `/camera/image_raw` | `/inverse_kinematics` | `/move_robot` |
+| **Latency** | Low (real-time) | Medium (request/response) | High (long task) |
+| **Failure Handling** | May lose messages | Request times out | Goal can be canceled |
+
+### Decision Tree: Which Pattern to Use?
+
+```
+Is the data continuous/streaming?
+├─ YES → Use Topic
+│   └─ Sensor data, status updates, continuous monitoring
+│
+└─ NO
+   │
+   Is it a quick request/response?
+   ├─ YES → Use Service
+   │   └─ Configuration queries, one-shot computations
+   │
+   └─ NO
+      │
+      Is it a long-running goal?
+      └─ YES → Use Action
+          └─ Navigation, manipulation, perception pipeline
+```
+
+---
+
+## 🔍 Section 5: Debugging Communication
+
+### Tool 1: `ros2 topic list`
+
+List all active topics:
+
+```bash
+ros2 topic list
+# Output:
+# /robot/battery_percent
+# /robot/motor_temperature
+# /robot/status
+```
+
+### Tool 2: `ros2 topic echo`
+
+Subscribe to and display topic data in real-time:
+
+```bash
+ros2 topic echo /robot/battery_percent
+# Output:
+# data: 95.2
+# ---
+# data: 94.8
+# ---
+```
+
+### Tool 3: `ros2 topic info`
+
+Get details about a topic:
+
+```bash
+ros2 topic info /robot/battery_percent
+# Type: std_msgs/msg/Float32
+# Publisher count: 1
+# Subscription count: 1
+```
+
+### Tool 4: `ros2 service list`
+
+List all available services:
+
+```bash
+ros2 service list
+# Output:
+# /add_two_ints
+# /get_robot_config
+```
+
+### Tool 5: `ros2 service call`
+
+Call a service from the command line:
+
+```bash
+ros2 service call /add_two_ints example_interfaces/srv/AddTwoInts "{a: 5, b: 3}"
+# Output:
+# requester: making request: AddTwoInts_Request(a=5, b=3)
+# response:
+# AddTwoInts_Response(sum=8)
+```
+
+### Tool 6: `ros2 action list`
+
+List all available actions:
+
+```bash
+ros2 action list
+# Output:
+# /move_robot
+```
+
+### Tool 7: `ros2 action send_goal`
+
+Send a goal to an action server:
+
+```bash
+ros2 action send_goal /move_robot example_interfaces/action/MoveRobot "{target_pose: {position: {x: 1.0, y: 2.0, z: 0.0}}}"
+```
+
+---
+
+## 💡 Real-World Example: Robot Arm Task
+
+Imagine a robot arm that needs to:
+1. 📊 **Stream joint angles** (Topics)
+2. 📋 **Query gripper state** (Service)
+3. 🎯 **Execute pick-and-place** (Action)
+
+```python
+# src/my_robot/my_robot/robot_arm_orchestrator.py
+import rclpy
+from sensor_msgs.msg import JointState
+
+class RobotArmOrchestrator(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('arm_orchestrator')
+
+        # Subscribe to joint angles (Topic)
+        self.joint_sub = self.create_subscription(
+            JointState,
+            '/arm/joint_states',
+            self.joint_callback,
+            10
+        )
+
+        # Create service client for gripper state (Service)
+        self.gripper_client = self.create_client(
+            GetGripperState,  # Custom service type
+            '/gripper/get_state'
+        )
+
+        # Create action client for pick-and-place (Action)
+        self.pick_action_client = self.create_client(
+            PickAndPlace,  # Custom action type
+            '/arm/pick_and_place'
+        )
+
+    def joint_callback(self, msg):
+        # Stream incoming joint data
+        self.get_logger().info(f'Joint angles: {msg.position}')
+
+    def query_gripper_state(self):
+        # Synchronous service call
+        request = GetGripperState.Request()
+        response = self.gripper_client.call(request)
+        self.get_logger().info(f'Gripper state: {response.state}')
+
+    def execute_pick_and_place(self, target_pose):
+        # Asynchronous action call
+        goal = PickAndPlace.Goal()
+        goal.target_pose = target_pose
+
+        future = self.pick_action_client.send_goal_async(goal)
+        future.add_done_callback(self.goal_response_callback)
+
+    def goal_response_callback(self, future):
+        goal_handle = future.result()
+        self.get_logger().info('Pick-and-place goal accepted!')
+```
+
+---
+
+## 🛠️ Key Takeaways
+
+1. **Topics** = Fire-and-forget data streams (best for sensors)
+2. **Services** = Synchronous request/reply (best for queries)
+3. **Actions** = Asynchronous goals with feedback (best for long tasks)
+4. **QoS** = Configurable delivery guarantees (reliable vs. best-effort)
+5. **Naming** = Use hierarchical names (`/robot/subsystem/sensor`)
+6. **Debugging** = Use `ros2 topic`, `ros2 service`, `ros2 action` CLI tools
+7. **Decoupling** = Publishers don't know about subscribers; enables modular systems
+
+---
+
+## ❓ Troubleshooting
+
+**Q: Subscriber not receiving messages?**
+- Ensure topic names match exactly (case-sensitive!)
+- Verify publisher is running: `ros2 topic list | grep <topic_name>`
+- Check QoS compatibility between publisher and subscriber
+- Use `ros2 topic echo` to verify data is being published
+
+**Q: Service call returns timeout?**
+- Ensure service server is running: `ros2 service list`
+- Check service name matches exactly
+- Increase timeout if server is slow: `client.call_async(request, timeout_sec=5.0)`
+- Check server logs for errors
+
+**Q: Action goal never completes?**
+- Ensure action server is running: `ros2 action list`
+- Check if goal was canceled unintentionally
+- Add logging to `execute_callback` to debug execution
+- Ensure action server calls `goal_handle.succeed()` or `goal_handle.abort()`
+
+**Q: High CPU usage with Topics?**
+- Reduce subscription depth (queue size) if buffering excessive messages
+- Use best-effort QoS for non-critical data
+- Consider using message filters to downsample high-rate topics
+
+---
+
+## 📚 Further Reading
+
+- [ROS 2 Topics Documentation](https://docs.ros.org/en/iron/Concepts/Intermediate/About-Topic-QoS-Settings.html)
+- [ROS 2 Services Documentation](https://docs.ros.org/en/iron/Tutorials/Beginner-Client-Libraries/Writing-A-Simple-Py-Service-And-Client.html)
+- [ROS 2 Actions Documentation](https://docs.ros.org/en/iron/Tutorials/Beginner-Client-Libraries/Writing-An-Action-Server-Client.html)
+- [ROS 2 CLI Tools](https://docs.ros.org/en/iron/Tutorials/Beginner-CLI-Tools/)
+
+---
+
+## ✅ Next Steps
+
+1. **[Go to Lesson 1.3](../lesson-1-3-urdf)**: Learn URDF robot description format
+2. **[View Exercises](../exercises-1)**: Practice what you learned
+3. **[Take the Quiz](../quiz-1)**: Test your understanding
+
+---
+
+**Lesson Duration**: ~3.5 hours (reading + hands-on)
+**Difficulty**: Beginner ✅
+**Prerequisites**: Basic Python, Lesson 1.1 concepts
+
+Ready for the next lesson? [Click here →](../lesson-1-3-urdf)

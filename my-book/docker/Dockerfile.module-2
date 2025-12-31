@@ -1,0 +1,53 @@
+# Module 2: Physics Simulation (Gazebo)
+# Build: docker build -f docker/Dockerfile.module-2 -t physical-ai-book:module-2 .
+# Run:   docker run -it --gpus all physical-ai-book:module-2
+
+FROM osrf/sim:humble
+
+LABEL maintainer="Physical AI & Humanoid Robotics Course"
+LABEL description="Module 2: Gazebo Physics Simulation - Docker environment"
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ROS_DISTRO=humble
+ENV PYTHONUNBUFFERED=1
+
+# Install additional dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-dev \
+    git \
+    vim \
+    nano \
+    curl \
+    wget \
+    gazebo-ros-pkgs \
+    gazebo-ros2-control \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages for the course
+RUN pip3 install --no-cache-dir \
+    numpy \
+    matplotlib \
+    scipy \
+    jupyter \
+    pyyaml \
+    lxml
+
+# Create workspace
+RUN mkdir -p /root/ros2_ws/src
+
+# Copy course materials
+COPY docs/module-2-gazebo /root/course/module-2
+
+# Set working directory
+WORKDIR /root/ros2_ws
+
+# Source ROS 2 and Gazebo setup
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc && \
+    echo "source /usr/share/gazebo/setup.bash" >> /root/.bashrc
+
+# Export Gazebo paths
+ENV GAZEBO_RESOURCE_PATH=/usr/share/gazebo-11:$GAZEBO_RESOURCE_PATH
+
+CMD ["/bin/bash"]

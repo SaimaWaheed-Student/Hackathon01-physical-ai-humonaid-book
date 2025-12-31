@@ -1,0 +1,299 @@
+---
+sidebar_position: 2
+title: Lesson 4.2 - Multimodal Vision-Language Models
+---
+
+# Lesson 4.2: Multimodal Perception (Vision-Language Models)
+
+**Duration**: ~3.5 hours | **Pages**: 20 | **Difficulty**: Advanced
+
+## Learning Objectives
+
+By the end of this lesson, you will:
+- ✅ Use CLIP for vision-language alignment
+- ✅ Implement zero-shot object detection with Grounding DINO
+- ✅ Extract semantic information from images
+- ✅ Generate action descriptions from visual input
+- ✅ Handle multi-object scenes with ambiguity
+- ✅ Optimize inference for real-time performance
+- ✅ Integrate vision+language for closed-loop manipulation
+
+---
+
+## 🎯 Vision-Language Models (VLMs)
+
+VLMs align images and text in a shared embedding space. This enables:
+- **Zero-shot detection**: Find "red box" without training
+- **Scene understanding**: Describe what robot sees
+- **Action generation**: "Pick up the object the human is pointing at"
+
+### CLIP: Contrastive Vision-Language Pre-Training
+
+```python
+import clip
+import torch
+from PIL import Image
+
+# Load CLIP model (ViT-B/32 is fastest)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model, preprocess = clip.load("ViT-B/32", device=device)
+
+# Load image
+image = Image.open("scene.jpg")
+image_input = preprocess(image).unsqueeze(0).to(device)
+
+# Text queries
+text_queries = [
+    "a red box",
+    "a green sphere",
+    "a metal cylinder",
+    "background clutter"
+]
+
+# Encode text
+text_tokens = clip.tokenize(text_queries).to(device)
+with torch.no_grad():
+    text_features = model.encode_text(text_tokens)
+    image_features = model.encode_image(image_input)
+
+# Compute similarities (0-100 scale)
+similarities = (image_features @ text_features.T).softmax(dim=-1)[0] * 100
+
+for query, score in zip(text_queries, similarities):
+    print(f"{query}: {score:.1f}%")
+```
+
+### Grounding DINO: Open-Vocabulary Object Detection
+
+```python
+from groundingdino.util.inference import load_model, load_image, predict
+import cv2
+
+# Load model
+model = load_model("groundingdino_swag_best.pth")
+
+# Detect objects
+image_source, image = load_image("warehouse.jpg")
+
+# Text prompt (what to find)
+text_prompt = "red box. blue bin. shelf"
+
+# Run detection
+boxes, logits, phrases = predict(
+    model, image, text_prompt,
+    box_threshold=0.3,  # Confidence threshold
+    text_threshold=0.25
+)
+
+# Draw results
+for box, phrase, score in zip(boxes, phrases, logits):
+    x1, y1, x2, y2 = box
+    cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+    cv2.putText(image, f"{phrase} {score:.2f}", (int(x1), int(y1)-10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+cv2.imshow("Detections", image)
+cv2.waitKey(0)
+```
+
+---
+
+## 🤖 Vision-Guided Manipulation
+
+### Grasping Pipeline
+
+```python
+import clip
+import torch
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import Pose
+import numpy as np
+import rclpy
+
+class VisionGraspingController(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('vision_grasping')
+
+        # Initialize CLIP
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model, self.preprocess = clip.load("ViT-B/32", device=self.device)
+
+        # Subscribe to camera
+        self.image_sub = self.create_subscription(
+            Image, '/camera/rgb/image_raw', self.image_callback, 10
+        )
+
+        # Publisher for grasp pose
+        self.grasp_pub = self.create_publisher(Pose, '/grasp_target', 10)
+        self.current_image = None
+
+        self.get_logger().info('Vision grasping controller ready')
+
+    def image_callback(self, msg):
+        """Store latest image."""
+        self.current_image = msg
+
+    def find_object(self, object_description):
+        """Find object in current image using vision-language."""
+        if self.current_image is None:
+            return None
+
+        # Convert ROS image to PIL
+        from cv_bridge import CvBridge
+        bridge = CvBridge()
+        cv_image = bridge.imgmsg_to_cv2(self.current_image)
+        from PIL import Image as PILImage
+        pil_image = PILImage.fromarray(cv_image)
+
+        # Preprocess image
+        image_input = self.preprocess(pil_image).unsqueeze(0).to(self.device)
+
+        # Create text queries
+        queries = [
+            object_description,
+            "background",
+            "other objects"
+        ]
+
+        # Compute similarities
+        text_tokens = clip.tokenize(queries).to(self.device)
+        with torch.no_grad():
+            text_features = self.model.encode_text(text_tokens)
+            image_features = self.model.encode_image(image_input)
+
+        scores = (image_features @ text_features.T).softmax(dim=-1)[0]
+
+        # If target has highest score
+        if scores[0] > 0.5:
+            self.get_logger().info(f'Found {object_description}: {scores[0]:.2f}')
+
+            # Find region of interest (simple heuristic)
+            # In practice, use Grounding DINO for precise bounding box
+            grasp_pose = Pose()
+            grasp_pose.position.x = 0.5
+            grasp_pose.position.y = 0.0
+            grasp_pose.position.z = 0.3
+
+            return grasp_pose
+
+        return None
+
+    def execute_grasp(self, object_name):
+        """Find and grasp object."""
+        grasp_pose = self.find_object(object_name)
+        if grasp_pose:
+            self.grasp_pub.publish(grasp_pose)
+            return True
+        return False
+
+def main():
+    rclpy.init()
+    controller = VisionGraspingController()
+
+    # Wait for image
+    rclpy.spin_once(controller, timeout_sec=2)
+
+    # Execute grasping
+    controller.execute_grasp("red ball")
+    controller.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## ⚡ Real-Time Optimization
+
+### Model Quantization & Batching
+
+```python
+import torch
+import clip
+
+# Load model with optimizations
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model, preprocess = clip.load("ViT-B/32", device=device)
+
+# Option 1: Quantization (reduce precision)
+model = model.half()  # FP16 instead of FP32
+# ~2x faster, minor accuracy loss
+
+# Option 2: Batch processing
+def batch_detect(images, text_queries, batch_size=8):
+    """Process multiple images efficiently."""
+    results = []
+
+    # Encode all text once
+    text_tokens = clip.tokenize(text_queries).to(device)
+    with torch.no_grad():
+        text_features = model.encode_text(text_tokens)
+
+    # Process images in batches
+    for i in range(0, len(images), batch_size):
+        batch = images[i:i+batch_size]
+        image_inputs = torch.stack([preprocess(img) for img in batch]).to(device)
+
+        with torch.no_grad():
+            image_features = model.encode_image(image_inputs)
+
+        # Compute similarities
+        similarities = (image_features @ text_features.T)
+        results.extend(similarities.softmax(dim=-1).cpu().tolist())
+
+    return results
+
+# Benchmark
+import time
+n_images = 100
+images = [Image.new('RGB', (224, 224)) for _ in range(n_images)]
+queries = ["object 1", "object 2", "background"]
+
+start = time.time()
+results = batch_detect(images, queries, batch_size=16)
+elapsed = time.time() - start
+
+print(f"Processed {n_images} images in {elapsed:.2f}s ({n_images/elapsed:.0f} fps)")
+```
+
+---
+
+## 🎭 Handling Ambiguity
+
+```python
+def resolve_ambiguity(image, instruction, candidate_objects):
+    """Disambiguate when instruction is ambiguous."""
+
+    # Option 1: Ask for clarification
+    if len(candidate_objects) > 1:
+        print(f"Found multiple matches: {candidate_objects}")
+        print("Please specify: left/right/top/bottom/closest/farthest")
+        return None
+
+    # Option 2: Use spatial reasoning
+    # "Pick up the blue box on the left shelf"
+    # -> Find "blue box" AND "left shelf"
+    # -> Intersect regions
+
+    # Option 3: Learn from context
+    # Store recent interactions
+    # Similar instructions should find same object
+
+    return candidate_objects[0] if candidate_objects else None
+```
+
+---
+
+## ⚡ Best Practices
+
+1. **Model Selection**: CLIP for classification, Grounding DINO for detection
+2. **Batch Processing**: Process 8-16 images together for efficiency
+3. **Confidence Thresholds**: Require >0.7 score before executing
+4. **Fallbacks**: Ask clarification if ambiguous (2+ matches)
+5. **Caching**: Cache embeddings for repeated queries
+6. **Real-time**: Target >10 fps (100ms latency)
+
+---
+
+**Next**: [Lesson 4.3 - End-to-End Voice-Controlled Integration](lesson-4-3-integration.mdx)

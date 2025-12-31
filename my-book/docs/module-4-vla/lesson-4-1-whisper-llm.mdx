@@ -1,0 +1,361 @@
+---
+sidebar_position: 1
+title: Lesson 4.1 - Speech Recognition & LLM Integration
+---
+
+# Lesson 4.1: Speech Recognition & Large Language Models
+
+**Duration**: ~3.5 hours | **Pages**: 20 | **Difficulty**: Advanced
+
+## Learning Objectives
+
+By the end of this lesson, you will:
+- ✅ Use OpenAI Whisper for robust speech-to-text conversion
+- ✅ Integrate GPT-4/Mistral for natural language understanding
+- ✅ Design effective prompts for robot command interpretation
+- ✅ Implement intent extraction and parameter parsing
+- ✅ Build streaming audio pipelines for real-time processing
+- ✅ Handle errors and provide meaningful fallbacks
+- ✅ Deploy speech+LLM systems with ROS 2
+
+---
+
+## 📚 Introduction: Why Speech + Language Models?
+
+**Voice interfaces** enable natural human-robot interaction. Instead of learning complex APIs, users speak naturally: **"Pick up the box on the left shelf"**. The system must:
+- Convert speech → text (Whisper)
+- Understand intent (LLM)
+- Extract parameters (parsing)
+- Execute action (robot control)
+
+### Speech Recognition Timeline
+
+| Era | Technology | Accuracy | Issues |
+|-----|-----------|----------|--------|
+| **2000s** | Hidden Markov Models | ~85% | Speaker-dependent, limited vocabulary |
+| **2010s** | Deep Learning (Kaldi, CMU Sphinx) | ~92% | Background noise sensitive |
+| **2020s** | Transformer Models (Whisper, QuartzNet) | **>95%** | Robust across accents, languages, audio quality |
+
+---
+
+## 🎤 OpenAI Whisper
+
+Whisper is a speech-to-text model trained on 680K hours of multilingual audio. It handles **accents, background noise, and technical language** with minimal errors.
+
+### Whisper Model Variants
+
+```python
+# Load Whisper (different sizes available)
+import whisper
+
+# Available models: tiny, base, small, medium, large
+# Tradeoff: Speed vs. Accuracy
+
+model = whisper.load_model("base")  # ~140M parameters
+# For CPU: use "tiny" (39M params)
+# For GPU: use "small" (244M params) or "medium" (769M params)
+
+# Transcribe audio file
+result = model.transcribe("audio.mp3")
+
+print(result["text"])  # Transcribed text
+print(result["language"])  # Detected language (en, es, fr, etc.)
+```
+
+### Real-Time Audio Streaming with Whisper
+
+```python
+import pyaudio
+import numpy as np
+from collections import deque
+import whisper
+
+class RealtimeWhisper:
+    def __init__(self, model_name="base"):
+        self.model = whisper.load_model(model_name)
+        self.audio_buffer = deque(maxlen=160000)  # 10 seconds @ 16kHz
+        self.sample_rate = 16000
+
+    def stream_audio(self, callback):
+        """Capture audio from microphone and process."""
+        p = pyaudio.PyAudio()
+        stream = p.open(
+            format=pyaudio.paFloat32,
+            channels=1,
+            rate=self.sample_rate,
+            input=True,
+            frames_per_buffer=2048
+        )
+
+        print("Listening...")
+        try:
+            while True:
+                # Read chunk from microphone
+                audio_chunk = np.frombuffer(
+                    stream.read(2048), dtype=np.float32
+                )
+                self.audio_buffer.extend(audio_chunk)
+
+                # Every 2 seconds, transcribe
+                if len(self.audio_buffer) >= 2 * self.sample_rate:
+                    audio_np = np.array(list(self.audio_buffer))
+                    result = self.model.transcribe(audio_np)
+                    text = result["text"]
+                    print(f"Recognized: {text}")
+
+                    # Callback with transcribed text
+                    callback(text)
+
+                    # Clear buffer
+                    self.audio_buffer.clear()
+
+        except KeyboardInterrupt:
+            print("Stopped")
+        finally:
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
+
+if __name__ == '__main__':
+    whisper = RealtimeWhisper(model_name="base")
+
+    def on_text(text):
+        print(f">>> {text}")
+
+    whisper.stream_audio(on_text)
+```
+
+---
+
+## 🧠 Large Language Models (LLMs)
+
+LLMs like GPT-4 and Mistral understand context and nuance. They excel at:
+- **Intent understanding**: "Move forward 1 meter" vs. "go straight"
+- **Parameter extraction**: number, direction, object type
+- **Ambiguity resolution**: clarifying vague commands
+
+### Prompt Engineering for Robotics
+
+```python
+from anthropic import Anthropic
+
+class RobotCommandInterpreter:
+    def __init__(self):
+        self.client = Anthropic()
+
+    def parse_command(self, text):
+        """Convert natural language to robot action."""
+
+        # System prompt defines robot capabilities
+        system_prompt = """
+You are a robot command interpreter. Your job is to convert natural language
+commands into structured robot actions.
+
+Available actions:
+- move(direction: forward/backward/left/right, distance_m: float)
+- pick_up(object_name: str)
+- place(location: str)
+- look_at(direction: str)
+
+User will say things like:
+- "Pick up the red box"
+- "Move forward 2 meters"
+- "Place it on the shelf"
+
+Return JSON: {"action": str, "params": {}}
+
+Examples:
+Input: "Pick up the red box on the left"
+Output: {"action": "pick_up", "params": {"object": "red box", "location": "left"}}
+
+Input: "Move forward slowly"
+Output: {"action": "move", "params": {"direction": "forward", "distance": 0.5}}
+
+Input: "That's a dog"
+Output: {"action": "null", "params": {}}
+"""
+
+        # Call GPT-4 for intent parsing
+        response = self.client.messages.create(
+            model="claude-3-5-sonnet-20241022",  # Use your preferred model
+            max_tokens=256,
+            system=system_prompt,
+            messages=[{"role": "user", "content": text}]
+        )
+
+        return response.content[0].text
+
+if __name__ == '__main__':
+    interpreter = RobotCommandInterpreter()
+
+    commands = [
+        "Pick up the red ball",
+        "Move forward 2 meters",
+        "That's a lamp",
+        "Place the box on the left shelf"
+    ]
+
+    for cmd in commands:
+        result = interpreter.parse_command(cmd)
+        print(f"Input: {cmd}")
+        print(f"Output: {result}\n")
+```
+
+---
+
+## 🔗 ROS 2 Speech Command Node
+
+### Complete Integration
+
+```python
+# speech_command_node.py
+import rclpy
+from rclpy.node import Node
+import whisper
+from anthropic import Anthropic
+from std_msgs.msg import String
+from geometry_msgs.msg import Twist
+import pyaudio
+import numpy as np
+import json
+
+class SpeechCommandNode(Node):
+    def __init__(self):
+        super().__init__('speech_command_node')
+
+        # Initialize AI models
+        self.whisper = whisper.load_model("base")
+        self.llm_client = Anthropic()
+
+        # Publishers
+        self.action_pub = self.create_publisher(String, '/robot_action', 10)
+        self.transcription_pub = self.create_publisher(String, '/speech/transcription', 10)
+
+        # Parameters
+        self.sample_rate = 16000
+        self.chunk_size = 2048
+
+        self.get_logger().info('Speech command node started')
+
+    def transcribe_audio(self):
+        """Record audio and transcribe with Whisper."""
+        p = pyaudio.PyAudio()
+        stream = p.open(
+            format=pyaudio.paFloat32,
+            channels=1,
+            rate=self.sample_rate,
+            input=True,
+            frames_per_buffer=self.chunk_size
+        )
+
+        print("Recording... (Ctrl+C to stop)")
+        audio_frames = []
+        duration = 10  # Record for 10 seconds
+
+        for _ in range(int(self.sample_rate * duration / self.chunk_size)):
+            try:
+                chunk = stream.read(self.chunk_size)
+                audio_frames.append(np.frombuffer(chunk, dtype=np.float32))
+            except KeyboardInterrupt:
+                break
+
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+
+        # Convert to numpy array
+        audio_np = np.concatenate(audio_frames)
+
+        # Transcribe with Whisper
+        result = self.whisper.transcribe(audio_np)
+        text = result["text"]
+
+        # Publish transcription
+        msg = String()
+        msg.data = text
+        self.transcription_pub.publish(msg)
+
+        return text
+
+    def interpret_command(self, text):
+        """Use LLM to understand command intent."""
+
+        system_prompt = """
+You are a robot command interpreter. Convert natural language to actions.
+
+Available actions:
+- move(direction, distance_m)
+- pick_up(object)
+- place(location)
+- turn(degrees)
+
+Return ONLY valid JSON, no explanations.
+Example output: {"action": "move", "direction": "forward", "distance": 1.0}
+"""
+
+        response = self.llm_client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=100,
+            system=system_prompt,
+            messages=[{"role": "user", "content": text}]
+        )
+
+        try:
+            action_json = json.loads(response.content[0].text)
+            return action_json
+        except json.JSONDecodeError:
+            self.get_logger().warn(f"Failed to parse: {response.content[0].text}")
+            return None
+
+    def execute_command(self):
+        """Main loop: record → transcribe → interpret → execute."""
+        while rclpy.ok():
+            # Record and transcribe
+            text = self.transcribe_audio()
+            print(f"Transcribed: {text}")
+
+            # Interpret with LLM
+            action = self.interpret_command(text)
+
+            if action:
+                print(f"Action: {action}")
+
+                # Publish action for robot to execute
+                msg = String()
+                msg.data = json.dumps(action)
+                self.action_pub.publish(msg)
+            else:
+                print("Could not parse command")
+
+            print("---")
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SpeechCommandNode()
+
+    try:
+        node.execute_command()
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## ⚡ Best Practices
+
+- **Model Selection**: Use "base" Whisper for 95% accuracy with ~900ms latency
+- **Prompt Engineering**: Be specific about actions, parameters, and format
+- **Error Handling**: Always validate LLM output before execution
+- **Streaming**: Process audio chunks for less than 1 second latency
+- **Fallback**: Repeat request or ask for clarification if confidence is low
+- **Context**: Include recent commands in prompt for coherence
+
+---
+
+**Next**: [Lesson 4.2 - Multimodal Vision-Language Models](lesson-4-2-perception.mdx)

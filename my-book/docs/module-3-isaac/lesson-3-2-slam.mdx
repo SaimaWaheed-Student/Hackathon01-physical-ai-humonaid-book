@@ -1,0 +1,357 @@
+---
+sidebar_position: 2
+title: Lesson 3.2 - SLAM and Autonomous Navigation
+---
+
+# Lesson 3.2: SLAM and Autonomous Navigation
+
+**Duration**: ~3 hours | **Pages**: 20 | **Difficulty**: Advanced
+
+## Learning Objectives
+
+By the end of this lesson, you will:
+- ✅ Understand SLAM (Simultaneous Localization & Mapping) algorithms
+- ✅ Configure ROS 2 Nav2 stack for autonomous navigation
+- ✅ Process sensor fusion (camera + LiDAR) for accurate localization
+- ✅ Build and navigate using costmaps
+- ✅ Implement path planning and obstacle avoidance
+- ✅ Deploy autonomous navigation in simulation and real robots
+
+---
+
+## 📚 Introduction: Why SLAM?
+
+**SLAM** solves a fundamental robotics problem: **How can a robot explore unknown environments while simultaneously building a map and knowing its location?**
+
+### SLAM Applications
+- Mobile robot navigation (AGVs, service robots)
+- Drone mapping and exploration
+- Autonomous vehicles (self-driving cars)
+- Humanoid robot exploration
+
+### Visual vs. LiDAR SLAM
+
+| Aspect | Visual SLAM | LiDAR SLAM |
+|--------|-----------|-----------|
+| **Sensor** | Camera | LiDAR |
+| **Accuracy** | Medium | High |
+| **Speed** | Fast | Medium |
+| **Lighting** | Limited | All weather |
+| **Range** | 5-20m | 50-100m |
+| **Cost** | Low | High |
+
+---
+
+## 🗺️ SLAM Algorithm Basics
+
+### Loop Closure Detection
+
+A critical SLAM component is detecting when the robot revisits a location:
+
+```python
+import cv2
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+
+class LoopClosureDetector:
+    def __init__(self, threshold=0.8):
+        self.keyframes = []
+        self.descriptors = []
+        self.threshold = threshold
+        self.orb = cv2.ORB_create(nfeatures=500)
+
+    def extract_features(self, image):
+        """Extract ORB features from image."""
+        kp, des = self.orb.detectAndCompute(image, None)
+        return kp, des
+
+    def detect_loop_closure(self, current_image):
+        """Check if current image matches any previous keyframe."""
+        _, des = self.extract_features(current_image)
+
+        if len(self.descriptors) == 0:
+            return None
+
+        # Compute similarities to all previous frames
+        similarities = []
+        for prev_des in self.descriptors:
+            # Convert descriptors to float for similarity computation
+            current_float = des.astype(np.float32)
+            prev_float = prev_des.astype(np.float32)
+
+            # Hamming distance (for binary descriptors)
+            matches = self.bf_matcher.knnMatch(des, prev_des, k=2)
+            good_matches = sum(1 for m, n in matches if m.distance < 0.7 * n.distance)
+            similarities.append(good_matches)
+
+        max_similarity = max(similarities)
+        max_idx = similarities.index(max_similarity)
+
+        # Loop closure detected if similarity exceeds threshold
+        if max_similarity > self.threshold:
+            return max_idx  # Keyframe index of loop closure
+
+        return None
+
+    def add_keyframe(self, image):
+        """Add image as keyframe to map."""
+        _, des = self.extract_features(image)
+        self.keyframes.append(image)
+        self.descriptors.append(des)
+```
+
+---
+
+## 🧭 ROS 2 Nav2 Integration
+
+### Nav2 Navigation Stack Architecture
+
+```
+┌─────────────────────────────────────┐
+│   Application Layer (user code)     │
+│   ├─ Navigation Goals               │
+│   └─ Behavior Trees                 │
+├─────────────────────────────────────┤
+│   Nav2 Core (Planners, Controllers) │
+│   ├─ Global Planner (Dijkstra)      │
+│   ├─ Local Planner (DWB)            │
+│   └─ Recovery Behaviors             │
+├─────────────────────────────────────┤
+│   Costmap Layers                    │
+│   ├─ Static map layer               │
+│   ├─ Obstacle layer (sensor data)   │
+│   └─ Inflation layer                │
+├─────────────────────────────────────┤
+│   Localization (AMCL, IMU)          │
+│   └─ Fusion of sensor data          │
+└─────────────────────────────────────┘
+```
+
+### Python Client for Navigation
+
+```python
+import rclpy
+from nav2_simple_commander.robot_navigator import BasicNavigator
+from geometry_msgs.msg import PoseStamped
+import tf_transformations
+
+class AutonomousNavigator(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('autonomous_navigator')
+        self.navigator = BasicNavigator()
+
+    def navigate_to_goal(self, x, y, theta):
+        """Navigate to goal position."""
+        # Create goal pose
+        goal_pose = PoseStamped()
+        goal_pose.header.frame_id = 'map'
+        goal_pose.header.stamp = self.get_clock().now().to_msg()
+
+        goal_pose.pose.position.x = x
+        goal_pose.pose.position.y = y
+
+        # Convert yaw to quaternion
+        quaternion = tf_transformations.quaternion_from_euler(0, 0, theta)
+        goal_pose.pose.orientation.x = quaternion[0]
+        goal_pose.pose.orientation.y = quaternion[1]
+        goal_pose.pose.orientation.z = quaternion[2]
+        goal_pose.pose.orientation.w = quaternion[3]
+
+        # Send goal to Nav2
+        self.navigator.goToPose(goal_pose)
+
+        # Monitor progress
+        while not self.navigator.isTaskComplete():
+            feedback = self.navigator.getFeedback()
+            distance = feedback.distance_remaining
+            self.get_logger().info(f'Distance to goal: {distance:.2f}m')
+
+        result = self.navigator.getResult()
+        if result == TaskResult.SUCCEEDED:
+            self.get_logger().info('Goal reached!')
+        else:
+            self.get_logger().error('Navigation failed!')
+
+    def navigate_waypoints(self, waypoints):
+        """Navigate through sequence of waypoints."""
+        for i, (x, y, theta) in enumerate(waypoints):
+            self.get_logger().info(f'Navigating to waypoint {i+1}/{len(waypoints)}')
+            self.navigate_to_goal(x, y, theta)
+```
+
+---
+
+## 🎯 Costmap Configuration
+
+### Creating Costmap Layers
+
+```yaml
+# nav2_params.yaml
+costmap:
+  costmap:
+    ros__parameters:
+      # Global costmap
+      global_frame: map
+      robot_base_frame: base_link
+      use_sim_time: true
+
+      plugins:
+        - static_layer
+        - obstacle_layer
+        - inflation_layer
+
+      static_layer:
+        plugin: nav2_costmap_2d::StaticLayer
+        map_subscribe_transient_local: true
+
+      obstacle_layer:
+        plugin: nav2_costmap_2d::ObstacleLayer
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: LaserScan
+
+      inflation_layer:
+        plugin: nav2_costmap_2d::InflationLayer
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.55
+```
+
+---
+
+## 🚗 Path Planning and Control
+
+### Dynamic Window Approach (DWB) Local Planner
+
+```python
+class DynamicWindowPlanner:
+    def __init__(self, max_velocity=1.0, max_angular_velocity=1.0):
+        self.max_v = max_velocity
+        self.max_w = max_angular_velocity
+        self.dt = 0.1  # simulation timestep
+
+    def dynamic_window(self, v_current, w_current):
+        """Compute dynamic window (reachable velocities)."""
+        # Acceleration constraints
+        max_accel = 0.5  # m/s²
+        max_angular_accel = 0.5  # rad/s²
+
+        v_min = max(0, v_current - max_accel * self.dt)
+        v_max = min(self.max_v, v_current + max_accel * self.dt)
+
+        w_min = max(-self.max_w, w_current - max_angular_accel * self.dt)
+        w_max = min(self.max_w, w_current + max_angular_accel * self.dt)
+
+        return (v_min, v_max), (w_min, w_max)
+
+    def evaluate_trajectory(self, v, w, pose, goal, obstacles):
+        """Evaluate trajectory quality."""
+        # Simulate forward
+        x, y, theta = pose
+        trajectory_cost = 0
+
+        for _ in range(10):  # 10 steps ahead
+            x += v * np.cos(theta) * self.dt
+            y += v * np.sin(theta) * self.dt
+            theta += w * self.dt
+
+            # Cost components
+            distance_to_goal = np.sqrt((goal[0] - x)**2 + (goal[1] - y)**2)
+            min_dist_to_obstacle = self.min_distance_to_obstacles(
+                (x, y), obstacles
+            )
+
+            # Total cost
+            trajectory_cost += distance_to_goal - min_dist_to_obstacle
+
+        return trajectory_cost
+
+    def plan_local(self, pose, goal, obstacles):
+        """Plan locally with DWB."""
+        best_velocity = (0, 0)
+        best_cost = float('inf')
+
+        v_range, w_range = self.dynamic_window(0, 0)
+
+        for v in np.linspace(v_range[0], v_range[1], 10):
+            for w in np.linspace(w_range[0], w_range[1], 10):
+                cost = self.evaluate_trajectory(v, w, pose, goal, obstacles)
+                if cost < best_cost:
+                    best_cost = cost
+                    best_velocity = (v, w)
+
+        return best_velocity
+```
+
+---
+
+## 🔄 Sensor Fusion for Localization
+
+### Monte Carlo Localization (Particle Filter)
+
+```python
+import numpy as np
+
+class ParticleFilter:
+    def __init__(self, num_particles=100):
+        self.num_particles = num_particles
+        # Initialize particles uniformly in space
+        self.particles = np.random.uniform(-10, 10, (num_particles, 3))  # x, y, theta
+        self.weights = np.ones(num_particles) / num_particles
+
+    def predict(self, linear_velocity, angular_velocity, dt):
+        """Prediction step: move particles based on odometry."""
+        for i in range(self.num_particles):
+            x, y, theta = self.particles[i]
+            # Add noise to motion model
+            v_noisy = linear_velocity + np.random.normal(0, 0.01)
+            w_noisy = angular_velocity + np.random.normal(0, 0.01)
+
+            # Update pose
+            x += v_noisy * np.cos(theta) * dt
+            y += v_noisy * np.sin(theta) * dt
+            theta += w_noisy * dt
+
+            self.particles[i] = [x, y, theta]
+
+    def update(self, observation, likelihood_fn):
+        """Update step: weight particles by observation likelihood."""
+        for i in range(self.num_particles):
+            self.weights[i] *= likelihood_fn(self.particles[i], observation)
+
+        # Normalize weights
+        self.weights /= np.sum(self.weights)
+
+    def resample(self):
+        """Resample particles based on weights."""
+        indices = np.random.choice(
+            self.num_particles,
+            size=self.num_particles,
+            p=self.weights
+        )
+        self.particles = self.particles[indices]
+        self.weights = np.ones(self.num_particles) / self.num_particles
+
+    def get_pose_estimate(self):
+        """Get weighted mean pose."""
+        mean_pose = np.average(self.particles, axis=0, weights=self.weights)
+        return mean_pose
+```
+
+---
+
+## ✨ Best Practices
+
+1. **Map Quality**: Use high-resolution maps (0.05m/cell)
+2. **Sensor Fusion**: Combine multiple sensors for robustness
+3. **Loop Closure**: Critical for long-term autonomy
+4. **Costmap Tuning**: Match to robot dynamics
+5. **Failure Recovery**: Plan B when navigation fails
+6. **Real-Time Performance**: Optimize for 10-20 Hz updates
+
+---
+
+**Next**: [Lesson 3.3 - Reinforcement Learning for Robot Control](lesson-3-3-rl.mdx)

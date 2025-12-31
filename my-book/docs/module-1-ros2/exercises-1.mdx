@@ -1,0 +1,421 @@
+---
+sidebar_position: 4
+title: Module 1 - Exercises
+---
+
+# Module 1 Exercises: ROS 2 Fundamentals
+
+**Total Exercises**: 8 | **Difficulty**: Beginner to Intermediate | **Estimated Time**: 2-3 hours
+
+These exercises reinforce what you learned in Lessons 1.1–1.3. Each exercise includes a starter template and acceptance criteria.
+
+---
+
+## Exercise 1: Multi-Publisher Temperature Sensor System
+
+**Objective**: Create multiple publishers that simulate temperature sensors across a robot.
+
+**Starter Code**:
+```python
+# src/my_robot/my_robot/exercise_1_publishers.py
+import rclpy
+from std_msgs.msg import Float32
+import time
+import random
+
+class TemperatureSensorPublisher(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('temperature_sensor')
+
+        # TODO: Create publishers for each sensor
+        # Sensor 1: CPU temperature (/robot/cpu_temperature)
+        # Sensor 2: GPU temperature (/robot/gpu_temperature)
+        # Sensor 3: Motor temperature (/robot/motor_temperature)
+
+        # TODO: Create a timer that publishes every 0.5 seconds
+
+    def publish_temperatures(self):
+        # TODO: Publish simulated temperature data
+        # CPU: 45-65°C (increasing over time)
+        # GPU: 55-75°C (higher than CPU)
+        # Motor: 40-50°C (relatively stable)
+        pass
+
+def main():
+    rclpy.init()
+    node = TemperatureSensorPublisher()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Acceptance Criteria**:
+- [ ] Three publishers created for different temperature sensors
+- [ ] Each publishes Float32 messages at 2 Hz
+- [ ] Temperature values vary realistically (use `random.uniform()`)
+- [ ] Logger outputs current temperatures
+- [ ] Runs without errors for ≥30 seconds
+
+**Solution**:
+
+```python
+import rclpy
+from std_msgs.msg import Float32
+import time
+import random
+
+class TemperatureSensorPublisher(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('temperature_sensor')
+
+        self.cpu_pub = self.create_publisher(Float32, '/robot/cpu_temperature', 10)
+        self.gpu_pub = self.create_publisher(Float32, '/robot/gpu_temperature', 10)
+        self.motor_pub = self.create_publisher(Float32, '/robot/motor_temperature', 10)
+
+        self.timer = self.create_timer(0.5, self.publish_temperatures)
+        self.base_cpu = 45.0
+
+    def publish_temperatures(self):
+        self.base_cpu += random.uniform(-1, 2)
+
+        cpu_msg = Float32(data=max(40, min(80, self.base_cpu)))
+        gpu_msg = Float32(data=cpu_msg.data + random.uniform(5, 15))
+        motor_msg = Float32(data=45 + random.uniform(-5, 5))
+
+        self.cpu_pub.publish(cpu_msg)
+        self.gpu_pub.publish(gpu_msg)
+        self.motor_pub.publish(motor_msg)
+
+        self.get_logger().info(
+            f'CPU: {cpu_msg.data:.1f}°C | GPU: {gpu_msg.data:.1f}°C | Motor: {motor_msg.data:.1f}°C'
+        )
+
+def main():
+    rclpy.init()
+    node = TemperatureSensorPublisher()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Exercise 2: Alert Monitoring Subscriber
+
+**Objective**: Subscribe to temperature data and trigger alerts when thresholds exceeded.
+
+**Starter Code**:
+```python
+# src/my_robot/my_robot/exercise_2_subscriber.py
+import rclpy
+from std_msgs.msg import Float32
+
+class AlertMonitor(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('alert_monitor')
+
+        # TODO: Subscribe to temperature topics
+        # CPU threshold: >70°C
+        # GPU threshold: >80°C
+        # Motor threshold: >55°C
+
+        self.alerts = []
+
+    def temperature_callback(self, msg, sensor_name, threshold):
+        # TODO: Check if temperature exceeds threshold
+        # TODO: Log warning/error if exceeded
+        # TODO: Store alert with timestamp
+        pass
+
+def main():
+    rclpy.init()
+    node = AlertMonitor()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Acceptance Criteria**:
+- [ ] Subscribes to all three temperature topics
+- [ ] Detects when any temperature exceeds threshold
+- [ ] Logs warnings with timestamp and sensor name
+- [ ] Stores alerts in a list
+- [ ] No errors for ≥30 seconds
+
+---
+
+## Exercise 3: Simple Arithmetic Service
+
+**Objective**: Create a service that multiplies two numbers.
+
+**Starter Code**:
+```python
+# src/my_robot/my_robot/exercise_3_service.py
+import rclpy
+from example_interfaces.srv import AddTwoInts  # Reuse existing interface
+
+class MultiplyService(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('multiply_service')
+
+        # TODO: Create a service at '/multiply' that:
+        # - Takes two integers (a, b)
+        # - Returns their product
+        # - Logs the operation
+
+    def multiply_callback(self, request, response):
+        # TODO: Implement multiplication logic
+        pass
+
+def main():
+    rclpy.init()
+    node = MultiplyService()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Acceptance Criteria**:
+- [ ] Service created at `/multiply`
+- [ ] Accepts two integers (request.a, request.b)
+- [ ] Returns product in response.sum
+- [ ] Logs operation: "Multiply A × B = RESULT" (where A, B, RESULT are the actual values)
+- [ ] Client can call service and receive response
+
+---
+
+## Exercise 4: Service Client with Error Handling
+
+**Objective**: Call the multiply service with error handling and timeout.
+
+**Starter Code**:
+```python
+# src/my_robot/my_robot/exercise_4_client.py
+import rclpy
+from example_interfaces.srv import AddTwoInts
+
+class MultiplyClient(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('multiply_client')
+
+        self.client = self.create_client(AddTwoInts, '/multiply')
+
+        # TODO: Wait for service with timeout
+        # TODO: Send request for 12 × 7
+        # TODO: Handle response or timeout error
+
+    def call_service(self, a, b):
+        # TODO: Create request
+        # TODO: Call service with error handling
+        pass
+
+def main():
+    rclpy.init()
+    node = MultiplyClient()
+    node.call_service(12, 7)
+    rclpy.spin(node, timeout_sec=5)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Acceptance Criteria**:
+- [ ] Waits for service (max 3 seconds)
+- [ ] Sends request with a=12, b=7
+- [ ] Logs response: "12 × 7 = 84"
+- [ ] Handles service unavailable error gracefully
+- [ ] Handles timeout gracefully
+
+---
+
+## Exercise 5: Simple Action Server
+
+**Objective**: Create an action server that counts down from 10.
+
+**Starter Code**:
+```python
+# src/my_robot/my_robot/exercise_5_action_server.py
+import rclpy
+from rclpy.action import ActionServer
+from rclpy.action import GoalResponse
+from example_interfaces.action import Fibonacci
+import time
+
+class CountdownActionServer:
+    def __init__(self):
+        self.node = rclpy.create_node('countdown_server')
+
+        # TODO: Create action server '/countdown'
+        # TODO: Goal: count from value (e.g., 10)
+        # TODO: Feedback: current count
+        # TODO: Result: completion message
+
+    def execute_callback(self, goal_handle):
+        # TODO: Implement countdown logic
+        # - Loop from goal count down to 0
+        # - Send feedback every iteration
+        # - Sleep 1 second between iterations
+        # - Return result when done
+        pass
+
+def main():
+    rclpy.init()
+    server = CountdownActionServer()
+    # TODO: Spin executor
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Acceptance Criteria**:
+- [ ] Action server created at `/countdown`
+- [ ] Accepts goal with count value
+- [ ] Sends feedback every second (current count)
+- [ ] Returns success result when count reaches 0
+- [ ] Handles cancellation gracefully
+
+---
+
+## Exercise 6: Action Client with Feedback
+
+**Objective**: Send a countdown goal and receive progress feedback.
+
+**Starter Code**:
+```python
+# src/my_robot/my_robot/exercise_6_action_client.py
+import rclpy
+from rclpy.action import ActionClient
+from example_interfaces.action import Fibonacci
+
+class CountdownActionClient:
+    def __init__(self):
+        self.node = rclpy.create_node('countdown_client')
+        self.action_client = ActionClient(self.node, Fibonacci, '/countdown')
+
+    def send_countdown_goal(self, count):
+        # TODO: Wait for action server
+        # TODO: Create goal with count value
+        # TODO: Send goal with feedback callback
+        # TODO: Request result
+        pass
+
+    def feedback_callback(self, feedback):
+        # TODO: Log received feedback
+        pass
+
+    def result_callback(self, future):
+        # TODO: Log final result
+        pass
+
+def main():
+    rclpy.init()
+    client = CountdownActionClient()
+    client.send_countdown_goal(5)
+    rclpy.spin(client.node, timeout_sec=15)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Acceptance Criteria**:
+- [ ] Sends goal with count=5
+- [ ] Receives feedback 6 times (5, 4, 3, 2, 1, 0)
+- [ ] Logs each feedback
+- [ ] Logs final result
+- [ ] Completes without errors
+
+---
+
+## Exercise 7: URDF Validation
+
+**Objective**: Build a 3-link URDF robot and validate it.
+
+**Starter Code**:
+```xml
+<!-- urdf/exercise_7_robot.urdf -->
+<?xml version="1.0"?>
+<robot name="exercise_7_robot">
+
+  <!-- Base link -->
+  <link name="base_link">
+    <!-- TODO: Add visual geometry (cylinder) -->
+    <!-- TODO: Add collision geometry -->
+    <!-- TODO: Add inertial properties (mass=1.0) -->
+  </link>
+
+  <!-- TODO: Add joint_1 (revolute, parent=base_link, child=link_1) -->
+  <!-- TODO: Add link_1 with visual/collision/inertial -->
+  <!-- TODO: Add joint_2 (revolute, parent=link_1, child=link_2) -->
+  <!-- TODO: Add link_2 with visual/collision/inertial -->
+
+</robot>
+```
+
+**Acceptance Criteria**:
+- [ ] URDF file contains 3 links (base, link_1, link_2)
+- [ ] URDF contains 2 revolute joints
+- [ ] All links have visual, collision, inertial
+- [ ] `check_urdf exercise_7_robot.urdf` passes without errors
+- [ ] Transform tree shows proper parent-child relationships
+
+---
+
+## Exercise 8: Xacro Parametric Robot
+
+**Objective**: Create a 4-link robot using Xacro macros.
+
+**Starter Code**:
+```xml
+<!-- urdf/exercise_8_robot.urdf.xacro -->
+<?xml version="1.0"?>
+<robot name="exercise_8_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Define parameters -->
+  <xacro:property name="base_mass" value="1.0"/>
+  <xacro:property name="link_mass" value="0.5"/>
+  <xacro:property name="link_length" value="0.3"/>
+
+  <!-- TODO: Define macro for cylinder link with params -->
+  <!-- TODO: Use macro to create 4 links -->
+  <!-- TODO: Create 3 revolute joints connecting them -->
+
+</robot>
+```
+
+**Acceptance Criteria**:
+- [ ] Xacro macro defined for cylinder links
+- [ ] Macro uses parameters for customization
+- [ ] 4 links created using macro
+- [ ] 3 revolute joints connecting links sequentially
+- [ ] `xacro exercise_8_robot.urdf.xacro > out.urdf` generates valid URDF
+- [ ] Generated URDF passes `check_urdf`
+
+---
+
+## Summary & Tips
+
+**Tips for Success**:
+- 🐛 Use `ros2 topic echo` to debug topic messages
+- 🔧 Use `check_urdf` to validate robot descriptions
+- 📝 Log liberally - it helps you understand what's happening
+- ⏱️ Don't hardcode - use parameters and macros
+- 🧪 Test incrementally - run after each small change
+
+**Next**: Ready for the [Quiz](../quiz-1)? Take the 10-question assessment to verify your understanding.
+
+---
+
+**Total Exercise Time**: 2–3 hours
+**Difficulty**: Beginner to Intermediate
+**Prerequisites**: Lessons 1.1–1.3

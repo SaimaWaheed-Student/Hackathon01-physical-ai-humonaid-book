@@ -1,0 +1,256 @@
+---
+sidebar_position: 1
+title: Lesson 2.1 - Gazebo Physics Simulation Fundamentals
+---
+
+# Lesson 2.1: Gazebo Physics Simulation Fundamentals
+
+**Duration**: ~3 hours | **Pages**: 20 | **Difficulty**: Intermediate
+
+## Learning Objectives
+
+By the end of this lesson, you will:
+- ✅ Understand Gazebo physics engine architecture
+- ✅ Create and simulate 3D robot models
+- ✅ Configure physics engines (ODE, Bullet, DART, Simbody)
+- ✅ Implement sensor simulation (camera, LiDAR, IMU)
+- ✅ Apply forces, gravity, and friction to simulated objects
+- ✅ Debug and visualize physics interactions in real-time
+
+---
+
+## 📚 Introduction: Why Physics Simulation?
+
+**Gazebo** is the industry-standard simulator for robotics. It allows you to:
+- Test robot algorithms before deploying to hardware (cost savings: ~$500K per robot)
+- Simulate dangerous scenarios (fire, toxic environments)
+- Train AI models with unlimited data (no hardware wear)
+- Develop in parallel before hardware arrives
+- Run thousands of simulations overnight
+
+### Gazebo vs Real Robots
+
+| Aspect | Real Robot | Gazebo Simulation |
+|--------|-----------|-------------------|
+| **Cost** | $100K-$1M | Free (open source) |
+| **Safety** | High risk | Safe (digital environment) |
+| **Speed** | Real-time | Can be faster (multiple simulations) |
+| **Data** | Limited by wear | Unlimited training data |
+| **Debugging** | Physical inspection | Full visibility + sensors |
+| **Parallelization** | Single robot | Hundreds of instances |
+
+---
+
+## 🏗️ Gazebo Architecture
+
+Gazebo 11+ consists of three main components:
+
+### 1. Physics Engine
+The physics engine computes motion based on forces, collisions, and gravity.
+
+**Supported Engines**:
+- **ODE** (Open Dynamics Engine) - Default, stable, good for robotics
+- **Bullet** - High performance, bullet physics
+- **DART** - Advanced dynamics and robotics toolkit
+- **Simbody** - Biomechanics-focused
+
+```xml
+<!-- Example: Configure physics engine -->
+<physics type="ode">
+  <gravity>0 0 -9.81</gravity>
+  <ode>
+    <solver>
+      <type>quick</type>
+      <iters>20</iters>
+      <precon_iters>0</precon_iters>
+      <sor>1.3</sor>
+    </solver>
+    <constraints>
+      <cfm>0</cfm>
+      <erp>0.2</erp>
+      <contact_max_correcting_vel>100</contact_max_correcting_vel>
+      <contact_surface_layer>0.001</contact_surface_layer>
+    </constraints>
+  </ode>
+  <max_step_size>0.001</max_step_size>
+  <real_time_factor>1</real_time_factor>
+  <real_time_update_rate>1000</real_time_update_rate>
+</physics>
+```
+
+### 2. Sensor Simulation
+Gazebo simulates real sensors:
+- **Camera**: RGB images with noise
+- **Depth Camera**: Point clouds (RGB-D)
+- **LiDAR**: 2D/3D laser scans
+- **IMU**: Accelerometer, gyroscope, magnetometer
+- **Contact Sensor**: Collision detection
+- **Force/Torque Sensor**: Joint forces
+
+### 3. Plugin System
+Plugins extend Gazebo functionality:
+- **Model Plugins**: Control robot behavior
+- **Sensor Plugins**: Process sensor data
+- **World Plugins**: Implement physics modifications
+- **Visual Plugins**: Rendering customizations
+
+---
+
+## 🤖 Creating a Simulated Robot
+
+### Step 1: Define Robot in SDF
+
+```xml
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="simple_robot">
+    <link name="base_link">
+      <inertial>
+        <mass>10.0</mass>
+        <inertia>
+          <ixx>0.1</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.1</iyy>
+          <iyz>0</iyz>
+          <izz>0.1</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.3 0.3 0.2</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0 0 1 1</ambient>
+          <diffuse>0 0 1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>0.3 0.3 0.2</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>
+```
+
+### Step 2: Launch in Gazebo
+
+```bash
+# Start Gazebo with your robot
+gazebo --verbose ~/models/my_robot.world
+
+# Or use ROS 2 launch
+ros2 launch my_robot_description gazebo.launch.py
+```
+
+### Step 3: Control with ROS 2
+
+```python
+import rclpy
+from geometry_msgs.msg import Twist
+
+class RobotController(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('robot_controller')
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.create_timer(0.1, self.send_velocity)
+
+    def send_velocity(self):
+        msg = Twist()
+        msg.linear.x = 1.0  # 1 m/s forward
+        msg.angular.z = 0.5  # 0.5 rad/s rotation
+        self.cmd_vel_pub.publish(msg)
+
+def main():
+    rclpy.init()
+    controller = RobotController()
+    rclpy.spin(controller)
+    rclpy.shutdown()
+```
+
+---
+
+## 📡 Sensor Simulation
+
+### Camera Sensor
+
+```xml
+<sensor name="camera" type="camera">
+  <pose>0.1 0 0.1 0 0 0</pose>
+  <camera>
+    <horizontal_fov>1.047</horizontal_fov>
+    <image>
+      <width>640</width>
+      <height>480</height>
+      <format>R8G8B8</format>
+    </image>
+    <clip>
+      <near>0.1</near>
+      <far>100</far>
+    </clip>
+  </camera>
+  <always_on>1</always_on>
+  <update_rate>30</update_rate>
+  <visualize>true</visualize>
+</sensor>
+```
+
+### LiDAR Sensor
+
+```xml
+<sensor name="lidar" type="ray">
+  <pose>0 0 0.15 0 0 0</pose>
+  <ray>
+    <scan>
+      <horizontal>
+        <samples>360</samples>
+        <resolution>1.0</resolution>
+        <min_angle>0</min_angle>
+        <max_angle>6.28</max_angle>
+      </horizontal>
+    </scan>
+    <range>
+      <min>0.1</min>
+      <max>30</max>
+      <resolution>0.01</resolution>
+    </range>
+  </ray>
+  <always_on>1</always_on>
+  <update_rate>10</update_rate>
+</sensor>
+```
+
+---
+
+## 📊 Key Concepts Summary
+
+| Concept | Purpose | Example |
+|---------|---------|---------|
+| **World** | Container for all models | warehouse.world |
+| **Model** | Robot or object | robot.sdf |
+| **Link** | Rigid body (mass + geometry) | base_link, wheel |
+| **Joint** | Connection between links | revolute, prismatic |
+| **Sensor** | Virtual sensor | camera, lidar, imu |
+| **Plugin** | ROS 2 integration | gazebo_ros_camera |
+| **Physics** | Motion computation | ODE engine |
+
+---
+
+## ✨ Best Practices
+
+1. Start with simple models before adding complexity
+2. Validate inertia matrices for realistic motion
+3. Use appropriate timestep (0.001s for stability)
+4. Monitor real-time factor (≥0.8 is good)
+5. Add sensor noise to match reality
+6. Test without gravity first: `<gravity>0 0 0</gravity>`
+
+---
+
+**Next**: [Lesson 2.2 - Sensor Integration and ROS 2 Interfaces](lesson-2-2-sensors.mdx)

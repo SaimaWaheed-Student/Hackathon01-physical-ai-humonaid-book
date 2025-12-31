@@ -1,0 +1,73 @@
+# Module 4: Vision-Language-Action (Whisper, LLM, Multimodal AI)
+# Build: docker build -f docker/Dockerfile.module-4 -t physical-ai-book:module-4 .
+# Run:   docker run -it --gpus all physical-ai-book:module-4
+
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
+
+LABEL maintainer="Physical AI & Humanoid Robotics Course"
+LABEL description="Module 4: Vision-Language-Action (VLA) - Docker environment"
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV NVIDIA_VISIBLE_DEVICES=all
+
+# Install ROS 2 Humble
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg2 \
+    lsb-release \
+    ubuntu-keyring \
+    && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F42ED6FBAB17C654 \
+    && apt-get remove -y ubuntu-keyring \
+    && curl -sSL https://repo.ros2.org/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(source /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    git \
+    vim \
+    nano \
+    libsndfile1 \
+    ffmpeg \
+    ros-humble-desktop \
+    ros-humble-cv-bridge \
+    ros-humble-image-transport \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install AI/ML packages
+RUN pip3 install --no-cache-dir \
+    torch \
+    torchvision \
+    torchaudio \
+    transformers \
+    openai \
+    openai-whisper \
+    pillow \
+    matplotlib \
+    scipy \
+    numpy \
+    opencv-python \
+    jupyter \
+    clip \
+    groundingdino-py \
+    sentence-transformers
+
+# Create workspace
+RUN mkdir -p /root/ros2_ws/src
+
+# Copy course materials
+COPY docs/module-4-vla /root/course/module-4
+
+# Set working directory
+WORKDIR /root/ros2_ws
+
+# Source ROS 2 setup
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+
+# Create scripts directory
+RUN mkdir -p /root/scripts
+
+CMD ["/bin/bash"]

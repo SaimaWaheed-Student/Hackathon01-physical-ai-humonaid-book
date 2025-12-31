@@ -1,0 +1,183 @@
+---
+sidebar_position: 5
+title: Module 2 - Quiz
+---
+
+# Module 2 Quiz: Physics Simulation in Gazebo
+
+**Total Questions**: 10 | **Difficulty**: Intermediate | **Passing Score**: 70%
+
+Test your understanding of Gazebo physics simulation, sensors, and ROS 2 integration.
+
+---
+
+## Question 1: Physics Engine Selection
+
+**What is the primary advantage of ODE physics engine for robotics?**
+
+A) Highest computational performance
+B) Stability and predictability for rigid body dynamics
+C) Native ROS 2 integration
+D) Perfect real-time simulation
+
+**Correct Answer**: B
+
+**Explanation**: ODE (Open Dynamics Engine) is the default Gazebo physics engine and is specifically tuned for robotics applications, providing stable and predictable rigid body dynamics. While Bullet is faster, ODE is more reliable for typical robot simulations.
+
+---
+
+## Question 2: Gravity Configuration
+
+**In the SDF file below, what does this parameter control?**
+```xml
+<max_step_size>0.001</max_step_size>
+```
+
+A) Maximum acceleration of objects
+B) Physics simulation timestep (1ms)
+C) Maximum velocity of joint motors
+D) Gravity magnitude
+
+**Correct Answer**: B
+
+**Explanation**: `max_step_size` controls the physics simulation timestep. Smaller values (0.001s = 1ms) provide more stable, accurate simulations but are computationally expensive. Larger values are faster but less accurate.
+
+---
+
+## Question 3: Sensor Noise Modeling
+
+**Why should you add Gaussian noise to simulated sensors?**
+
+A) To make simulation more realistic
+B) To improve algorithm robustness
+C) To match real hardware behavior
+D) All of the above
+
+**Correct Answer**: D
+
+**Explanation**: Adding realistic sensor noise serves multiple purposes: it simulates real hardware (cameras, LiDAR, IMU all have noise), it tests algorithm robustness, and it improves sim-to-real transfer since algorithms trained with noisy data generalize better to real robots.
+
+---
+
+## Question 4: LiDAR Range Calculation
+
+**A simulated 2D LiDAR has:**
+```xml
+<min_angle>-3.14159</min_angle>
+<max_angle>3.14159</max_angle>
+<samples>360</samples>
+```
+
+**What is the angular resolution?**
+
+A) 0.01 degrees
+B) 0.01 radians
+C) 1 degree
+D) 0.1 radians
+
+**Correct Answer**: B
+
+**Explanation**: Angular resolution = (max_angle - min_angle) / samples = (6.28318) / 360 ≈ 0.01745 radians ≈ 1 degree. This is typical for 2D LiDAR sensors.
+
+---
+
+## Question 5: Camera Image Format
+
+**Which ROS 2 message type carries RGB camera images?**
+
+A) `sensor_msgs/Image`
+B) `sensor_msgs/CompressedImage`
+C) `sensor_msgs/ImageSet`
+D) `geometry_msgs/Image`
+
+**Correct Answer**: A
+
+**Explanation**: `sensor_msgs/Image` is the standard message type for camera images in ROS 2. It includes image dimensions, encoding format (RGB8, BGR8, etc.), and pixel data. `CompressedImage` is used for JPEG/PNG-compressed images.
+
+---
+
+## Question 6: PID Control - Proportional Gain
+
+**If your robot arm overshoots its target, which PID parameter should you DECREASE?**
+
+A) Kp (proportional gain)
+B) Ki (integral gain)
+C) Kd (derivative gain)
+D) All of the above
+
+**Correct Answer**: A
+
+**Explanation**: Overshoot is caused by excessive proportional gain (Kp). Reducing Kp makes the controller less aggressive. Increasing Kd (derivative gain) helps damp oscillations. Ki should be small to avoid integral windup.
+
+---
+
+## Question 7: Joint State Publishing
+
+**What frequency should you use for joint state updates (publishing joint positions)?**
+
+A) 1 Hz (once per second)
+B) 10 Hz (ten times per second)
+C) 50-100 Hz (high frequency)
+D) 1000 Hz (maximum possible)
+
+**Correct Answer**: C
+
+**Explanation**: Joint state should be published at 50-100 Hz for most applications. This provides smooth control loops and good responsiveness. 1-10 Hz is too slow for real-time control. 1000 Hz is unnecessary and wasteful.
+
+---
+
+## Question 8: Collision Detection
+
+**In Gazebo SDF, how do you define both visual and collision geometry?**
+
+A) Use same `<geometry>` element for both
+B) Define `<visual>` and `<collision>` as separate elements
+C) Use single `<collision_visual>` element
+D) Collision geometry auto-generates from visual
+
+**Correct Answer**: B
+
+**Explanation**: Good practice requires defining `<visual>` (what you see) and `<collision>` (physics simulation) separately. Visual geometry is often more detailed (cosmetic), while collision geometry is simpler for faster physics computation. They can differ for performance.
+
+---
+
+## Question 9: IMU Sensor Data
+
+**An IMU provides three main types of data. Which is NOT a standard IMU measurement?**
+
+A) Linear acceleration (X, Y, Z)
+B) Angular velocity (roll, pitch, yaw rates)
+C) Magnetic field direction
+D) Joint torque measurement
+
+**Correct Answer**: D
+
+**Explanation**: IMUs measure linear acceleration, angular velocity, and sometimes magnetic field. Joint torque is measured by force/torque sensors, NOT by IMU. IMUs are typically 6-DOF (3-axis accel + 3-axis gyro) or 9-DOF (+ magnetometer).
+
+---
+
+## Question 10: Sim-to-Real Transfer
+
+**Which factor is MOST important for successful sim-to-real transfer in robotics?**
+
+A) Using highest fidelity graphics
+B) Matching simulation physics to real robot dynamics
+C) Using most expensive robot
+D) Running simulation at maximum speed
+
+**Correct Answer**: B
+
+**Explanation**: The critical factor for sim-to-real transfer is accurate simulation physics. This means: realistic masses, inertia, friction, sensor noise, and dynamics. Perfect graphics don't matter if physics is wrong. The robot learns from physics, not visuals.
+
+---
+
+## Scoring Guide
+
+- **9-10 correct**: Excellent - Ready for advanced Gazebo topics
+- **7-8 correct**: Good - Understand core concepts
+- **5-6 correct**: Passing - Review lessons before proceeding
+- **< 5 correct**: Review all lessons, focus on physics fundamentals
+
+---
+
+**Next**: [Module 2 Capstone Project](capstone-2.mdx)

@@ -1,0 +1,213 @@
+---
+sidebar_position: 3
+title: Lesson 3.3 - Reinforcement Learning for Robotics
+---
+
+# Lesson 3.3: Reinforcement Learning for Robot Control
+
+**Duration**: ~3 hours | **Pages**: 20 | **Difficulty**: Advanced
+
+## Learning Objectives
+
+- ✅ Understand RL fundamentals (MDPs, rewards, policies)
+- ✅ Implement PPO for robot control
+- ✅ Train policies in Isaac Sim
+- ✅ Evaluate and deploy trained behaviors
+- ✅ Handle sim-to-real transfer
+- ✅ Fine-tune policies on real robots
+
+---
+
+## 📚 Why Reinforcement Learning?
+
+RL enables robots to learn complex behaviors through interaction, without explicit programming.
+
+### RL vs. Traditional Control
+
+| Aspect | Traditional | RL |
+|--------|-----------|-----|
+| **Programming** | Hand-coded | Learned |
+| **Flexibility** | Task-specific | General |
+| **Adaptation** | Requires reprogramming | Continuous |
+| **Complex Behaviors** | Difficult | Natural |
+
+---
+
+## 🧠 Core Concepts
+
+### Markov Decision Process (MDP)
+
+A robot learns by interacting with environment:
+- **State**: Robot + environment configuration
+- **Action**: Motor commands
+- **Reward**: Success signal
+- **Policy**: Learned mapping (state → action)
+
+```python
+class RobotEnv:
+    def step(self, action):
+        """Execute action, return (state, reward, done)."""
+        next_state = self.apply_dynamics(self.state, action)
+        reward = self.compute_reward(next_state)
+        done = self.is_terminal(next_state)
+        self.state = next_state
+        return next_state, reward, done
+
+    def compute_reward(self, state):
+        """Reward design guides learning."""
+        progress = -self.distance_to_goal(state)  # Get closer
+        action_cost = -0.01 * np.sum(np.abs(action))  # Minimize effort
+        collision_penalty = -10.0 if self.has_collision(state) else 0
+        return progress + action_cost + collision_penalty
+```
+
+---
+
+## 🤖 PPO Algorithm
+
+```python
+import torch
+import torch.nn as nn
+
+class PolicyNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super().__init__()
+        self.shared = nn.Sequential(
+            nn.Linear(state_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU()
+        )
+        self.policy = nn.Linear(64, action_dim)
+        self.value = nn.Linear(64, 1)
+
+    def forward(self, state):
+        features = self.shared(state)
+        return torch.tanh(self.policy(features)), self.value(features)
+
+class PPOTrainer:
+    def __init__(self, policy):
+        self.policy = policy
+        self.optimizer = torch.optim.Adam(policy.parameters(), lr=3e-4)
+
+    def train_step(self, states, actions, advantages, returns):
+        """Update policy using PPO."""
+        action_probs, values = self.policy(states)
+
+        # Policy loss with clipping
+        ratio = torch.exp(new_log_probs - old_log_probs)
+        policy_loss = -torch.min(
+            ratio * advantages,
+            torch.clamp(ratio, 0.8, 1.2) * advantages
+        ).mean()
+
+        # Value loss
+        value_loss = ((values - returns) ** 2).mean()
+
+        total_loss = policy_loss + 0.5 * value_loss
+        self.optimizer.zero_grad()
+        total_loss.backward()
+        self.optimizer.step()
+```
+
+---
+
+## 🎯 Training Loop
+
+```python
+class RLTrainer:
+    def __init__(self, env, policy, num_episodes=1000):
+        self.env = env
+        self.policy = policy
+        self.num_episodes = num_episodes
+
+    def collect_trajectories(self):
+        """Gather experience."""
+        states, actions, rewards = [], [], []
+        state, done = self.env.reset(), False
+
+        while not done:
+            action = self.policy.act(state)
+            next_state, reward, done = self.env.step(action)
+            states.append(state)
+            actions.append(action)
+            rewards.append(reward)
+            state = next_state
+
+        return states, actions, rewards
+
+    def train(self):
+        """Main training loop."""
+        for episode in range(self.num_episodes):
+            # Collect experience
+            states, actions, rewards = self.collect_trajectories()
+
+            # Compute advantages
+            advantages = self.compute_advantages(rewards)
+
+            # Update policy
+            self.policy.train_step(states, actions, advantages, rewards)
+
+            if episode % 100 == 0:
+                eval_reward = self.evaluate()
+                print(f'Episode {episode}: Reward={eval_reward:.1f}')
+
+    def evaluate(self, n_eval=5):
+        """Test learned policy."""
+        total = 0
+        for _ in range(n_eval):
+            state, done = self.env.reset(), False
+            while not done:
+                action = self.policy.act(state)
+                state, _, done = self.env.step(action)
+                total += _  # reward
+        return total / n_eval
+```
+
+---
+
+## 🔄 Sim-to-Real Transfer
+
+### Domain Randomization
+
+```python
+def randomize_sim(env):
+    """Randomize simulation for robust learning."""
+    # Physics parameters
+    env.friction = np.random.uniform(0.3, 1.0)
+    env.mass_scale = np.random.uniform(0.9, 1.1)
+
+    # Visual parameters
+    env.texture = np.random.choice(['metal', 'plastic', 'wood'])
+    env.lighting = np.random.uniform(0.5, 2.0)
+    env.camera_noise = np.random.uniform(0, 0.1)
+```
+
+### Online Adaptation
+
+```python
+def adapt_to_real(sim_policy, real_env, steps=10000):
+    """Fine-tune policy on real robot."""
+    for step in range(steps):
+        state = real_env.get_state()
+        action = sim_policy.act(state)
+        real_env.execute(action)
+
+        # Collect real experience
+        # Update policy with small learning rate
+```
+
+---
+
+## ✨ Best Practices
+
+1. **Reward Shaping**: Clear progress signals
+2. **Domain Randomization**: Train on varied simulations
+3. **Experience Replay**: Reuse data efficiently
+4. **Hyperparameter Tuning**: Learning rate, entropy bonus
+5. **Early Stopping**: Detect overfitting
+6. **Real-World Validation**: Test on hardware
+
+---
+
+**Next**: [Module 3 Exercises](exercises-3.mdx)

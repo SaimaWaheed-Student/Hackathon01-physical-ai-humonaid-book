@@ -1,0 +1,487 @@
+---
+sidebar_position: 1
+title: Lesson 1.1 - ROS 2 Middleware Fundamentals
+---
+
+# Lesson 1.1: ROS 2 Middleware Fundamentals
+
+**Duration**: ~3 hours | **Pages**: 20 | **Difficulty**: Beginner
+
+## Learning Objectives
+
+By the end of this lesson, you will:
+- ✅ Understand ROS 2 architecture and why middleware matters
+- ✅ Know the difference between DDS, pub/sub, and client libraries
+- ✅ Create and run your first ROS 2 nodes (publisher, subscriber)
+- ✅ Understand node lifecycle and the ROS 2 runtime
+- ✅ Write launch files to coordinate multiple nodes
+- ✅ Use the `rclpy` client library for Python development
+
+---
+
+## 📚 Introduction: What is ROS 2?
+
+**ROS 2** (Robot Operating System 2) is the world's leading **middleware framework** for building distributed robot systems. It solves the hardest problem in robotics: **how do different pieces of software (written by different teams, in different languages, running on different hardware) communicate reliably?**
+
+### Why Middleware Matters
+
+Imagine building a robot with:
+- 10+ sensors (cameras, LiDAR, IMU, wheel encoders)
+- 20+ actuators (motors, grippers, pumps)
+- 5+ onboard computers (GPU for perception, CPU for planning, edge compute for safety)
+- External systems (cloud AI, motion capture, human operator)
+
+**Without middleware**, you'd need to write custom socket code, network protocols, serialization, error handling for each connection. This is a nightmare.
+
+**With ROS 2**, you declare what data you want to share, and the middleware handles everything: networking, serialization, routing, timing, redundancy.
+
+### ROS 2 vs ROS 1
+
+| Feature | ROS 1 | ROS 2 |
+|---------|-------|-------|
+| **Communication** | Custom TCP/XML-RPC | DDS (industry standard) |
+| **Reliability** | Single master → single point of failure | Decentralized (any node can discover others) |
+| **Real-time** | Best effort | QoS-configurable (time-critical systems) |
+| **Security** | None | Encryption, authentication, access control |
+| **Language Support** | Python, C++ | Python, C++, Rust, Java, Go, C#, ... |
+| **Industry Adoption** | Academic | Automotive, aerospace, manufacturing |
+
+**Bottom line**: ROS 2 is production-grade. ROS 1 is still widely used, but ROS 2 is the future.
+
+---
+
+## 🏗️ Section 1: ROS 2 Architecture
+
+### The Stack
+
+ROS 2 is built in **3 layers**:
+
+```
+┌─────────────────────────────────────┐
+│     Your Robot Application          │
+│  (nodes, services, parameters)      │
+├─────────────────────────────────────┤
+│  ROS 2 Middleware Layer (rclpy)     │
+│  (pub/sub, services, actions)       │
+├─────────────────────────────────────┤
+│  DDS (Data Distribution Service)    │
+│  (networking, serialization, QoS)   │
+├─────────────────────────────────────┤
+│  OS (Linux, Windows, macOS)         │
+│  (networking, IPC, threading)       │
+└─────────────────────────────────────┘
+```
+
+### Layer 1: DDS (Data Distribution Service)
+
+**DDS** is an open standard (OMG) for real-time, publish-subscribe communication. Key features:
+
+- **Decentralized**: No broker needed. Any node can discover any other via multicast
+- **QoS**: Tune for your use case (real-time, best-effort, reliable, unreliable)
+- **Interoperability**: Different vendors' DDS implementations can talk to each other
+- **Performance**: Optimized for embedded systems
+
+ROS 2 uses **rclcpp** (C++) or **rclpy** (Python) to abstract DDS complexity away from you.
+
+### Layer 2: ROS 2 Middleware (rclpy/rclcpp)
+
+This is where you live as a developer. Provides:
+
+- **Nodes**: Processes that do work (sense, compute, control)
+- **Topics**: Async data streams (sensors → perception)
+- **Services**: Sync request/reply (queries, commands)
+- **Actions**: Long-running goals with feedback (navigation, manipulation)
+- **Parameters**: Configuration values you can set/get at runtime
+- **tf2**: Transform library for coordinate frames
+
+### Layer 3: Your Application
+
+Your Python code using `rclpy`:
+
+```python
+import rclpy
+from std_msgs.msg import String
+
+class MyNode(rclpy.node.Node):
+    def __init__(self):
+        super().__init__('my_node')
+
+def main():
+    rclpy.init()
+    node = MyNode()
+    rclpy.spin(node)
+```
+
+---
+
+## 🔄 Section 2: Communication Patterns
+
+ROS 2 offers three communication patterns. Choose the right one for your use case.
+
+### Pattern 1: Pub/Sub (Topics) - Async, One-Way
+
+**Use case**: Sensor data, status updates, logs
+
+**How it works**: Publisher sends data; any number of subscribers receive it. No acknowledgment.
+
+```python
+# Publisher side
+pub = node.create_publisher(String, '/my_topic', 10)
+msg = String()
+msg.data = 'Hello, subscribers!'
+pub.publish(msg)
+
+# Subscriber side
+def callback(msg):
+    print(f'Received: {msg.data}')
+
+sub = node.create_subscription(String, '/my_topic', callback, 10)
+```
+
+**Characteristics**:
+- ✅ Decoupled (pub doesn't care about subscribers)
+- ✅ Efficient for high-rate data (sensors, control loops)
+- ❌ No guarantee message delivered
+- ❌ One-way only
+
+**Real-world example**:
+- Publish `/camera/image_raw` 30 Hz
+- Subscribe to `/motor/command` (control loop)
+- Publish `/diagnostics` (heartbeat)
+
+### Pattern 2: Services - Sync, Request/Reply
+
+**Use case**: Queries, commands, computations
+
+**How it works**: Client sends request; server responds. Client waits for response (blocking).
+
+```python
+# Service server side
+def handle_request(request, response):
+    response.result = request.a + request.b
+    return response
+
+srv = node.create_service(AddTwoInts, '/add', handle_request)
+
+# Service client side
+client = node.create_client(AddTwoInts, '/add')
+request = AddTwoInts.Request()
+request.a = 5
+request.b = 3
+future = client.call_async(request)
+response = future.result()
+print(f'Result: {response.result}')  # 8
+```
+
+**Characteristics**:
+- ✅ Guaranteed delivery
+- ✅ Synchronous (request/reply)
+- ❌ Blocking (client waits for response)
+- ❌ One-to-one (one client, one server; multiple clients can call same server)
+
+**Real-world example**:
+- Query `/get_robot_config` to retrieve parameters
+- Call `/inverse_kinematics` with target pose, get joint angles
+- Call `/reset_simulator` to initialize environment
+
+### Pattern 3: Actions - Long-Running Goals with Feedback
+
+**Use case**: Goals, navigation, manipulation, anything time-consuming
+
+**How it works**: Client sends goal; server sends periodic feedback and final result. Client can cancel.
+
+```python
+# Action server side
+class MoveToGoalServer:
+    def __init__(self, node):
+        self._action_server = rclpy.action.ActionServer(
+            node, MoveGoal, 'move_robot', self.execute_callback)
+
+    def execute_callback(self, goal_handle):
+        for i in range(10):
+            feedback_msg = MoveGoal.Feedback()
+            feedback_msg.progress_percent = i * 10
+            goal_handle.publish_feedback(feedback_msg)
+            time.sleep(1)
+        goal_handle.succeed()
+        result = MoveGoal.Result()
+        result.success = True
+        return result
+
+# Action client side
+client = rclpy.action.ActionClient(node, MoveGoal, 'move_robot')
+goal_msg = MoveGoal.Goal()
+goal_msg.target_x = 5.0
+goal_msg.target_y = 3.0
+future = client.send_goal_async(goal_msg, feedback_callback)
+goal_handle = future.result()
+result_future = goal_handle.get_result_async()
+result = result_future.result()
+print(f'Goal succeeded: {result.result.success}')
+```
+
+**Characteristics**:
+- ✅ Perfect for time-consuming goals (move robot, grasp object)
+- ✅ Feedback tells you progress
+- ✅ Client can cancel at any time
+- ✅ Guaranteed completion or cancellation
+
+**Real-world example**:
+- Send goal: "Navigate to waypoint (x=5, y=3)"
+- Receive feedback: "Progress: 30%"
+- Receive feedback: "Progress: 60%"
+- Receive result: "Goal succeeded"
+
+---
+
+## 🔌 Section 3: Node Lifecycle
+
+A ROS 2 node goes through distinct **lifecycle states**:
+
+```
+    ┌─────────────────────────────────┐
+    │         Unconfigured            │ (initial state)
+    └──────────┬──────────────────────┘
+               │ on_configure()
+    ┌──────────▼──────────────────────┐
+    │         Inactive                 │ (ready, but not active)
+    └──────────┬──────────────────────┘
+               │ on_activate()
+    ┌──────────▼──────────────────────┐
+    │         Active                   │ (running, processing)
+    └──────────┬──────────────────────┘
+               │ on_deactivate()
+    ┌──────────▼──────────────────────┐
+    │         Inactive                 │
+    └──────────┬──────────────────────┘
+               │ on_cleanup()
+    ┌──────────▼──────────────────────┐
+    │         Unconfigured            │
+    └─────────────────────────────────┘
+```
+
+### Why Lifecycle Matters
+
+Imagine a robot on a shelf. You want to:
+1. **Initialize**: Load configs, check sensors (unconfigured → inactive)
+2. **Arm**: Activate motor drivers, ready to move (inactive → active)
+3. **Run**: Execute tasks (active)
+4. **Disarm**: Safely stop motors, release resources (active → inactive)
+5. **Cleanup**: Shutdown (inactive → unconfigured)
+
+With lifecycle, you can safely manage state:
+
+```python
+class MyRobot(LifecycleNode):
+    def on_configure(self, state):
+        # Load configs, initialize sensors
+        self.get_logger().info('Configuring...')
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_activate(self, state):
+        # Activate motors, start publishers
+        self.get_logger().info('Activating motors...')
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_deactivate(self, state):
+        # Stop motors, pause publishers
+        self.get_logger().info('Deactivating...')
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_cleanup(self, state):
+        # Release resources
+        self.get_logger().info('Cleaning up...')
+        return TransitionCallbackReturn.SUCCESS
+```
+
+---
+
+## ⚡ Section 4: Executors and Spinning
+
+The **executor** is the ROS 2 engine that processes callbacks. It:
+- Monitors topics/services/actions
+- Triggers callbacks when data arrives
+- Manages threading
+
+### SingleThreadedExecutor
+
+Processes one callback at a time (simple, no race conditions):
+
+```python
+rclpy.init()
+node = MyNode()
+executor = rclpy.executors.SingleThreadedExecutor()
+executor.add_node(node)
+executor.spin()
+```
+
+### MultiThreadedExecutor
+
+Processes callbacks in parallel (faster, but potential race conditions):
+
+```python
+executor = rclpy.executors.MultiThreadedExecutor(num_threads=4)
+executor.add_node(node)
+executor.spin()
+```
+
+---
+
+## 📄 Section 5: Launch Files (Python-based)
+
+**Launch files** coordinate multiple nodes. Instead of opening 10 terminals and typing commands, you write one launch file:
+
+```python
+# launch/my_robot.launch.py
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package='my_package',
+            executable='sensor_driver',
+            name='camera_driver',
+            parameters=[{'resolution': [1920, 1080]}],
+        ),
+        Node(
+            package='my_package',
+            executable='perception_node',
+            name='perception',
+        ),
+        Node(
+            package='my_package',
+            executable='motion_planner',
+            name='planner',
+        ),
+    ])
+```
+
+Then launch all 3 nodes with:
+
+```bash
+ros2 launch my_package my_robot.launch.py
+```
+
+---
+
+## 📝 Key Takeaways
+
+1. **ROS 2 is middleware** — it's about *communication*, not computation
+2. **Three patterns**: Pub/Sub (async sensors), Services (sync queries), Actions (long-running goals)
+3. **Nodes are processes** that produce/consume data
+4. **Topics are streams** — fire-and-forget data
+5. **Services are requests** — client waits for response
+6. **Actions are goals** — send objective, get feedback
+7. **Lifecycle** ensures safe startup/shutdown
+8. **Executors** manage callbacks
+9. **Launch files** coordinate networks of nodes
+
+---
+
+## 🎯 Practical Example: Publisher and Subscriber
+
+Let's code this right now. Create a Python file:
+
+```python
+# src/my_robot/my_robot/simple_pub.py
+import rclpy
+from std_msgs.msg import String
+
+def main():
+    rclpy.init()
+    node = rclpy.create_node('simple_publisher')
+    publisher = node.create_publisher(String, '/my_topic', 10)
+
+    msg = String()
+    count = 0
+
+    while rclpy.ok():
+        msg.data = f'Hello, ROS 2! Count: {count}'
+        publisher.publish(msg)
+        node.get_logger().info(f'Published: {msg.data}')
+        count += 1
+        time.sleep(1)  # Publish every 1 second
+
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+And a subscriber:
+
+```python
+# src/my_robot/my_robot/simple_sub.py
+import rclpy
+from std_msgs.msg import String
+
+def callback(msg):
+    print(f'Received: {msg.data}')
+
+def main():
+    rclpy.init()
+    node = rclpy.create_node('simple_subscriber')
+    subscription = node.create_subscription(String, '/my_topic', callback, 10)
+
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Run publisher** (terminal 1):
+```bash
+python3 simple_pub.py
+```
+
+**Run subscriber** (terminal 2):
+```bash
+python3 simple_sub.py
+```
+
+You'll see the publisher sending messages and the subscriber receiving them in real-time!
+
+---
+
+## ❓ Troubleshooting
+
+**Q: Topics not discovering each other?**
+- Ensure both nodes use same topic name (case-sensitive!)
+- Check network (ROS 2 uses multicast by default)
+- Use `ros2 topic list` to debug
+
+**Q: Service call times out?**
+- Server might not be running
+- Use `ros2 service list` to check
+- Add timeout to client
+
+**Q: Node crashes on startup?**
+- Check parameter types match expectations
+- Add try/except blocks
+- Use `get_logger().error()` for debugging
+
+---
+
+## 📚 Further Reading
+
+- [ROS 2 Official Docs](https://docs.ros.org/en/iron/)
+- [rclpy API](https://docs.ros2.org/iron/api/rclpy/)
+- DDS Specification (advanced)
+
+---
+
+## ✅ Next Steps
+
+1. **[Go to Lesson 1.2](../lesson-1-2-topics-services)**: Learn services and actions
+2. **[View Exercises](../exercises-1)**: Practice what you learned
+3. **[Take the Quiz](../quiz-1)**: Test your understanding
+
+---
+
+**Lesson Duration**: ~3 hours (reading + hands-on)
+**Difficulty**: Beginner ✅
+**Prerequisites**: Basic Python, Linux command line
+
+Ready for the next lesson? [Click here →](../lesson-1-2-topics-services)

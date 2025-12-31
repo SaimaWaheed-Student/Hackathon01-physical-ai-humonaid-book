@@ -1,0 +1,63 @@
+# Module 3: AI Perception & Navigation (NVIDIA Isaac + Nav2)
+# Build: docker build -f docker/Dockerfile.module-3 -t physical-ai-book:module-3 .
+# Run:   docker run -it --gpus all physical-ai-book:module-3
+
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
+
+LABEL maintainer="Physical AI & Humanoid Robotics Course"
+LABEL description="Module 3: NVIDIA Isaac Sim & Nav2 - Docker environment"
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV NVIDIA_VISIBLE_DEVICES=all
+
+# Install ROS 2 Humble
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg2 \
+    lsb-release \
+    ubuntu-keyring \
+    && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F42ED6FBAB17C654 \
+    && apt-get remove -y ubuntu-keyring \
+    && curl -sSL https://repo.ros2.org/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(source /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    git \
+    vim \
+    nano \
+    ros-humble-desktop \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-slam-toolbox \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages for AI modules
+RUN pip3 install --no-cache-dir \
+    numpy \
+    torch \
+    torchvision \
+    opencv-python \
+    matplotlib \
+    scipy \
+    jupyter \
+    onnx \
+    tensorboard
+
+# Create workspace
+RUN mkdir -p /root/ros2_ws/src
+
+# Copy course materials
+COPY docs/module-3-isaac /root/course/module-3
+
+# Set working directory
+WORKDIR /root/ros2_ws
+
+# Source ROS 2 setup
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+
+CMD ["/bin/bash"]

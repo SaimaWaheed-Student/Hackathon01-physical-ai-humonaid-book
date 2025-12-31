@@ -1,0 +1,660 @@
+---
+sidebar_position: 6
+title: Module 1 - Capstone Project
+---
+
+# Module 1 Capstone: Voice-Controlled Joint Controller
+
+**Duration**: 3-4 hours | **Difficulty**: Intermediate | **Type**: Integrated system project
+
+In this capstone, you'll build a **voice-controlled humanoid arm** that:
+1. 📋 Responds to voice commands ("Move arm up", "Rotate shoulder")
+2. 🤖 Uses ROS 2 services to control joint angles
+3. 📊 Publishes joint states for monitoring
+4. 🦴 Represents the arm with a URDF model
+5. 🎯 Integrates nodes, topics, services, and URDF
+
+---
+
+## Project Overview
+
+### Architecture Diagram
+
+```
+┌─────────────┐
+│ Voice Input │ (user speaks: "Move arm up 45 degrees")
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────────┐
+│  Voice-to-Command    │ Parses speech into ROS messages
+│  Parser Node         │ (uses simple string matching)
+└──────┬───────────────┘
+       │
+       ├─────────────────────────────────────────┐
+       │                                         │
+       ▼                                         ▼
+┌─────────────────────┐                 ┌──────────────────┐
+│  Joint Controller   │ (Service server)│ Joint Monitor    │
+│  Node (Service)     │ Accepts goals    │ Node (Subscriber)│
+│ Executes movements  │                 │ Publishes states │
+└────────┬────────────┘                 └──────────────────┘
+         │
+         └─────────────────────────────┐
+                                       │
+                                       ▼
+                                  ┌──────────────┐
+                                  │ Joint States │
+                                  │ Topic Stream │
+                                  │ (published)  │
+                                  └──────────────┘
+
+URDF: humanoid_arm.urdf (3-link arm with revolute joints)
+```
+
+### Learning Outcomes
+
+By completing this capstone, you'll understand:
+- ✅ How to coordinate multiple ROS 2 nodes
+- ✅ Service-based command patterns
+- ✅ Real-time joint state monitoring
+- ✅ URDF as the robot skeleton
+- ✅ Decoupled node design (each node does one job)
+
+---
+
+## Part 1: Create the Arm URDF
+
+Create `urdf/humanoid_arm.urdf`:
+
+```xml
+<?xml version="1.0"?>
+<robot name="humanoid_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="pi" value="3.14159265359"/>
+
+  <!-- Base (shoulder) -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.2 0.2 0.2"/>
+      </geometry>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.2 0.2 0.2"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="2.0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+
+  <!-- Shoulder joint (pitch: up/down) -->
+  <joint name="shoulder_pitch" type="revolute">
+    <parent link="base_link"/>
+    <child link="upper_arm"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="${-pi/4}" upper="${pi/4}" effort="50" velocity="1.0"/>
+    <dynamics damping="0.1" friction="0.0"/>
+  </joint>
+
+  <!-- Upper arm -->
+  <link name="upper_arm">
+    <visual>
+      <origin xyz="0 0 0.2" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.04" length="0.4"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0 0 1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.2" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.04" length="0.4"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.2" rpy="0 0 0"/>
+      <mass value="1.5"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- Elbow joint (roll: twist) -->
+  <joint name="elbow_roll" type="revolute">
+    <parent link="upper_arm"/>
+    <child link="forearm"/>
+    <origin xyz="0 0 0.4" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="${-pi/4}" upper="${pi/4}" effort="40" velocity="1.0"/>
+    <dynamics damping="0.1" friction="0.0"/>
+  </joint>
+
+  <!-- Forearm -->
+  <link name="forearm">
+    <visual>
+      <origin xyz="0 0 0.15" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.3"/>
+      </geometry>
+      <material name="red">
+        <color rgba="1 0 0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.15" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.3"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.15" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.008" ixy="0" ixz="0" iyy="0.008" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <!-- Wrist joint (yaw: rotate) -->
+  <joint name="wrist_yaw" type="revolute">
+    <parent link="forearm"/>
+    <child link="hand"/>
+    <origin xyz="0 0 0.3" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-pi/2}" upper="${pi/2}" effort="20" velocity="1.0"/>
+    <dynamics damping="0.1" friction="0.0"/>
+  </joint>
+
+  <!-- Hand (end effector) -->
+  <link name="hand">
+    <visual>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material name="yellow">
+        <color rgba="1 1 0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+</robot>
+```
+
+**Validate the URDF**:
+```bash
+check_urdf humanoid_arm.urdf
+# Output: robot name is: humanoid_arm
+# Successfully Parsed XML
+```
+
+---
+
+## Part 2: Joint Controller Service Server
+
+Create `src/capstone_voice_controller/capstone_voice_controller/joint_controller.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+from example_interfaces.srv import Trigger
+from std_msgs.msg import Float64MultiArray
+import math
+import time
+
+class JointController(Node):
+    """
+    Service server that controls arm joints.
+    Provides /set_arm_pose service to move joints to target angles.
+    Publishes current joint states on /joint_states.
+    """
+
+    def __init__(self):
+        super().__init__('joint_controller')
+
+        # Joint names (from URDF)
+        self.joint_names = ['shoulder_pitch', 'elbow_roll', 'wrist_yaw']
+        self.current_angles = [0.0, 0.0, 0.0]  # All joints start at 0 radians
+
+        # Create service
+        self.srv = self.create_service(
+            Float64MultiArray,
+            '/set_arm_pose',
+            self.set_pose_callback
+        )
+
+        # Publisher for joint states
+        self.joint_pub = self.create_publisher(JointState, '/joint_states', 10)
+
+        # Timer to publish joint states at 10 Hz
+        self.timer = self.create_timer(0.1, self.publish_joint_states)
+
+        self.get_logger().info('Joint Controller started. Joints initialized to 0 radians.')
+        self.get_logger().info('Service /set_arm_pose is available.')
+
+    def set_pose_callback(self, request, response):
+        """
+        Handle request to set arm pose.
+        request.data should be [angle1, angle2, angle3] in radians
+        """
+        angles = request.data
+
+        if len(angles) != 3:
+            self.get_logger().error(f'Expected 3 angles, got {len(angles)}')
+            return response
+
+        # Clamp angles to joint limits
+        limits = [
+            (-math.pi/4, math.pi/4),    # shoulder_pitch limits
+            (-math.pi/4, math.pi/4),    # elbow_roll limits
+            (-math.pi/2, math.pi/2),    # wrist_yaw limits
+        ]
+
+        clamped_angles = []
+        for i, (angle, (lower, upper)) in enumerate(zip(angles, limits)):
+            clamped = max(lower, min(upper, angle))
+            clamped_angles.append(clamped)
+
+            if clamped != angle:
+                self.get_logger().warn(
+                    f'Joint {self.joint_names[i]} angle {angle:.2f} clamped to {clamped:.2f}'
+                )
+
+        # Smoothly move to target (linear interpolation over 2 seconds)
+        steps = 20
+        for step in range(1, steps + 1):
+            alpha = step / steps  # 0 to 1
+            for i in range(3):
+                self.current_angles[i] = (
+                    self.current_angles[i] * (1 - alpha) +
+                    clamped_angles[i] * alpha
+                )
+            time.sleep(0.1)
+
+        self.get_logger().info(
+            f'Arm moved to: {[f"{a:.2f}" for a in self.current_angles]}'
+        )
+
+        return response
+
+    def publish_joint_states(self):
+        """Publish current joint states."""
+        msg = JointState()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.name = self.joint_names
+        msg.position = self.current_angles
+        msg.velocity = [0.0] * 3
+        msg.effort = [0.0] * 3
+
+        self.joint_pub.publish(msg)
+
+
+def main():
+    rclpy.init()
+    node = JointController()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Part 3: Voice Command Parser
+
+Create `src/capstone_voice_controller/capstone_voice_controller/voice_parser.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from std_msgs.msg import Float64MultiArray
+import math
+
+class VoiceCommandParser(Node):
+    """
+    Parses simple voice commands and sends them to the joint controller.
+    Examples:
+    - "Move shoulder up 30 degrees"
+    - "Rotate elbow forward 45 degrees"
+    - "Reset arm"
+    """
+
+    def __init__(self):
+        super().__init__('voice_parser')
+
+        # Service client to call joint controller
+        self.client = self.create_client(Float64MultiArray, '/set_arm_pose')
+        self.current_pose = [0.0, 0.0, 0.0]
+
+        # Subscription to voice commands (for simulation)
+        self.voice_sub = self.create_subscription(
+            String,
+            '/voice_commands',
+            self.voice_callback,
+            10
+        )
+
+        self.get_logger().info('Voice Parser started.')
+
+    def voice_callback(self, msg):
+        """Parse incoming voice command."""
+        command = msg.data.lower()
+        self.get_logger().info(f'Received command: "{command}"')
+
+        # Parse command
+        target_pose = self.parse_command(command)
+
+        if target_pose is None:
+            self.get_logger().warn(f'Could not parse command: {command}')
+            return
+
+        # Call service to move arm
+        self.call_joint_controller(target_pose)
+
+    def parse_command(self, command):
+        """Parse natural language command into joint angles."""
+
+        # Reset arm
+        if 'reset' in command or 'home' in command:
+            return [0.0, 0.0, 0.0]
+
+        # Extract joint name and angle
+        target_pose = self.current_pose.copy()
+
+        # Shoulder commands
+        if 'shoulder' in command:
+            if 'up' in command or 'raise' in command:
+                target_pose[0] = math.pi / 6  # 30 degrees
+            elif 'down' in command or 'lower' in command:
+                target_pose[0] = -math.pi / 6
+
+        # Elbow commands
+        if 'elbow' in command:
+            if 'forward' in command:
+                target_pose[1] = math.pi / 6
+            elif 'back' in command or 'backward' in command:
+                target_pose[1] = -math.pi / 6
+
+        # Wrist commands
+        if 'wrist' in command:
+            if 'left' in command:
+                target_pose[2] = math.pi / 4
+            elif 'right' in command:
+                target_pose[2] = -math.pi / 4
+
+        return target_pose
+
+    def call_joint_controller(self, target_pose):
+        """Call service to move arm."""
+        request = Float64MultiArray()
+        request.data = target_pose
+
+        if not self.client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().error('Joint controller service not available!')
+            return
+
+        future = self.client.call_async(request)
+        future.add_done_callback(self.service_done_callback)
+
+    def service_done_callback(self, future):
+        """Handle service response."""
+        try:
+            response = future.result()
+            self.get_logger().info('Arm movement completed.')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}')
+
+
+def main():
+    rclpy.init()
+    node = VoiceCommandParser()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Part 4: Joint State Monitor
+
+Create `src/capstone_voice_controller/capstone_voice_controller/joint_monitor.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+
+class JointMonitor(Node):
+    """
+    Monitors and displays current joint states.
+    Subscribes to /joint_states and logs current positions.
+    """
+
+    def __init__(self):
+        super().__init__('joint_monitor')
+
+        self.joint_sub = self.create_subscription(
+            JointState,
+            '/joint_states',
+            self.joint_callback,
+            10
+        )
+
+        self.get_logger().info('Joint Monitor started.')
+
+    def joint_callback(self, msg):
+        """Display joint states."""
+        joint_info = ' | '.join(
+            f'{name}: {angle:.2f} rad ({angle*180/3.14159:.1f}°)'
+            for name, angle in zip(msg.name, msg.position)
+        )
+        self.get_logger().info(f'Joint States: {joint_info}')
+
+
+def main():
+    rclpy.init()
+    node = JointMonitor()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Part 5: Voice Simulator (for Testing)
+
+Create `src/capstone_voice_controller/capstone_voice_controller/voice_simulator.py`:
+
+```python
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+import time
+
+class VoiceSimulator(Node):
+    """
+    Simulates voice input by publishing test commands.
+    Used for testing without actual speech recognition.
+    """
+
+    def __init__(self):
+        super().__init__('voice_simulator')
+
+        self.pub = self.create_publisher(String, '/voice_commands', 10)
+
+        # Test commands
+        self.commands = [
+            "Move shoulder up",
+            "Rotate elbow forward",
+            "Turn wrist left",
+            "Reset arm",
+            "Move shoulder down",
+        ]
+
+        self.timer = self.create_timer(3.0, self.send_command)
+        self.command_index = 0
+
+        self.get_logger().info('Voice Simulator started. Sending test commands every 3 seconds.')
+
+    def send_command(self):
+        """Send next test command."""
+        msg = String()
+        msg.data = self.commands[self.command_index]
+        self.pub.publish(msg)
+        self.get_logger().info(f'Sent voice command: "{msg.data}"')
+
+        self.command_index = (self.command_index + 1) % len(self.commands)
+
+
+def main():
+    rclpy.init()
+    node = VoiceSimulator()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## Part 6: Launch File
+
+Create `launch/capstone_arm_demo.launch.py`:
+
+```python
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package='capstone_voice_controller',
+            executable='joint_controller',
+            name='joint_controller',
+        ),
+        Node(
+            package='capstone_voice_controller',
+            executable='voice_parser',
+            name='voice_parser',
+        ),
+        Node(
+            package='capstone_voice_controller',
+            executable='joint_monitor',
+            name='joint_monitor',
+        ),
+        Node(
+            package='capstone_voice_controller',
+            executable='voice_simulator',
+            name='voice_simulator',
+        ),
+    ])
+```
+
+---
+
+## Running the Capstone
+
+1. **Start all nodes at once**:
+```bash
+ros2 launch capstone_voice_controller capstone_arm_demo.launch.py
+```
+
+2. **In another terminal, visualize the robot in RViz**:
+```bash
+rviz2
+```
+Then load the URDF and display `/joint_states`.
+
+3. **Watch the simulation**:
+   - Voice simulator sends commands every 3 seconds
+   - Voice parser converts them to joint angles
+   - Joint controller moves the arm smoothly
+   - Joint monitor displays current state
+   - RViz shows the arm moving in real-time
+
+---
+
+## Expected Output
+
+```
+[voice_simulator-4] [INFO] [voice_simulator]: Sent voice command: "Move shoulder up"
+[voice_parser-3] [INFO] [voice_parser]: Received command: "move shoulder up"
+[voice_parser-3] [INFO] [voice_parser]: Arm movement completed.
+[joint_controller-2] [INFO] [joint_controller]: Arm moved to: ['0.52', '0.00', '0.00']
+[joint_monitor-1] [INFO] [joint_monitor]: Joint States: shoulder_pitch: 0.52 rad (29.8°) | elbow_roll: 0.00 rad (0.0°) | wrist_yaw: 0.00 rad (0.0°)
+```
+
+---
+
+## Acceptance Criteria
+
+- [ ] URDF file validates with `check_urdf`
+- [ ] Joint controller service publishes joint states at ≥5 Hz
+- [ ] Voice parser correctly interprets commands
+- [ ] Arm moves smoothly between positions (no jerking)
+- [ ] All 4 nodes run without errors for ≥2 minutes
+- [ ] RViz shows arm movement in real-time
+- [ ] Monitor logs correctly display joint angles
+- [ ] Service calls complete within 3 seconds
+
+---
+
+## Extensions (Optional)
+
+1. **Add actual speech recognition** using Whisper (covered in Module 4)
+2. **Implement gripper control** (additional joint)
+3. **Add inverse kinematics** (solve for joint angles given hand position)
+4. **Record and playback** motion sequences
+5. **Add collision detection** using Gazebo (covered in Module 2)
+
+---
+
+## Key Learnings
+
+This capstone demonstrates:
+- ✅ Multi-node coordination (4 nodes working together)
+- ✅ Service-based command patterns (voice → controller)
+- ✅ Real-time joint state monitoring (publisher/subscriber)
+- ✅ URDF as the semantic model of the robot
+- ✅ Decoupled, modular architecture (each node has one responsibility)
+
+---
+
+**Capstone Duration**: 3-4 hours
+**Difficulty**: Intermediate
+**Prerequisites**: Lessons 1.1-1.3 + Exercises
+
+🎉 **Congratulations on completing Module 1!** You now understand ROS 2 fundamentals.
+
+---
+
+## Next Steps
+
+Ready to simulate your robot? **[Go to Module 2: Gazebo & Physics →](/docs/module-2-gazebo/lesson-2-1-physics)**
