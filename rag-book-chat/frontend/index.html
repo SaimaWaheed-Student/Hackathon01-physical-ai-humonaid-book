@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Book Reader - RAG Chatbot</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Book Reader Panel -->
+        <div class="book-panel">
+            <div class="book-header">
+                <h1>📖 Physical AI and Humanoid Robotics</h1>
+                <p class="book-meta">A comprehensive guide to AI-powered robotics systems</p>
+            </div>
+
+            <div class="book-content">
+                <div class="chapter">
+                    <h2>Chapter 1: Introduction to Robotics</h2>
+                    <p>Robotics is the branch of technology that deals with the design, construction, operation, and application of robots. The field of robotics has evolved rapidly over the past few decades, transforming from theoretical concepts into practical systems that revolutionize industries and improve human life.</p>
+
+                    <h3>1.1 What is a Robot?</h3>
+                    <p>A robot is a programmable machine that can perform a variety of tasks autonomously or semi-autonomously. Robots are designed to sense their environment, process information, and make decisions based on that information. Modern robots are increasingly equipped with artificial intelligence capabilities that enable them to learn and adapt to new situations.</p>
+
+                    <h3>1.2 History of Robotics</h3>
+                    <p>The concept of mechanical creatures dates back to ancient times, but the modern era of robotics began in the early 20th century. The term "robot" was first used in a 1920 play called "Rossum's Universal Robots." Since then, robotics has progressed from simple mechanical devices to sophisticated systems powered by artificial intelligence and machine learning.</p>
+                </div>
+
+                <div class="chapter">
+                    <h2>Chapter 2: AI in Robotics</h2>
+                    <p>Artificial Intelligence plays a crucial role in modern robotics. AI algorithms enable robots to perceive their environment, make informed decisions, and improve their performance over time through learning.</p>
+
+                    <h3>2.1 Machine Learning Basics</h3>
+                    <p>Machine learning is a subset of AI that focuses on enabling computers to learn from data without being explicitly programmed. In robotics, machine learning algorithms allow robots to improve their performance by learning from past experiences and adapting to new environments.</p>
+
+                    <h3>2.2 Neural Networks in Robotics</h3>
+                    <p>Neural networks are computational models inspired by the biological neural networks that constitute animal brains. They consist of interconnected nodes that process information and are widely used in robotics for tasks such as image recognition, natural language processing, and decision making.</p>
+                </div>
+
+                <div class="chapter">
+                    <h2>Chapter 3: Humanoid Robot Design</h2>
+                    <p>Humanoid robots are designed to resemble human characteristics and behaviors. These robots have become increasingly important in research and practical applications ranging from healthcare to entertainment.</p>
+
+                    <h3>3.1 Structural Components</h3>
+                    <p>A typical humanoid robot includes several key structural components: a head with sensors for vision and hearing, an upper body with arms for manipulation, a torso for housing computational systems, and legs for mobility. Each component is carefully designed to enable natural human-like movements.</p>
+
+                    <h3>3.2 Sensor Integration</h3>
+                    <p>Humanoid robots are equipped with various sensors including cameras for vision, microphones for audio input, touch sensors for tactile feedback, and inertial measurement units (IMUs) for balance and orientation tracking. These sensors provide the robot with awareness of its surroundings and its own state.</p>
+                </div>
+
+                <div class="chapter">
+                    <h2>Chapter 4: Control Systems and Kinematics</h2>
+                    <p>Control systems are essential for managing robot movements and responses. Kinematics is the study of motion without considering forces, while dynamics accounts for the forces that cause motion.</p>
+
+                    <h3>4.1 Forward Kinematics</h3>
+                    <p>Forward kinematics involves calculating the position and orientation of a robot's end effector based on known joint angles. This is fundamental for robot programming and control, allowing engineers to predict where a robot's arm or leg will be positioned.</p>
+
+                    <h3>4.2 Inverse Kinematics</h3>
+                    <p>Inverse kinematics is the reverse problem: determining the joint angles required to achieve a desired end-effector position. This is crucial for robot motion planning and is computationally more complex than forward kinematics.</p>
+                </div>
+            </div>
+
+            <!-- Selection Display -->
+            <div id="selectionDisplay" class="selection-display" style="display: none;">
+                <div class="selection-header">
+                    <span>Selected Text:</span>
+                    <button onclick="clearSelection()" class="close-btn">✕</button>
+                </div>
+                <div id="selectedText" class="selected-content"></div>
+            </div>
+        </div>
+
+        <!-- Chatbot Panel -->
+        <div class="chatbot-panel">
+            <div class="chatbot-header">
+                <h2>💬 Ask About This Book</h2>
+                <div class="connection-status">
+                    <span id="statusIndicator" class="status-dot"></span>
+                    <span id="statusText">Connecting...</span>
+                </div>
+            </div>
+
+            <div id="chatContainer" class="chat-container">
+                <div class="welcome-message">
+                    <h3>Welcome to RAG Chatbot!</h3>
+                    <p>Ask any question about the book content. The chatbot will search through the entire book and provide answers with citations.</p>
+                    <div class="sample-questions">
+                        <p><strong>Example questions:</strong></p>
+                        <button onclick="askQuestion('What is a robot?')" class="sample-btn">What is a robot?</button>
+                        <button onclick="askQuestion('Tell me about humanoid robots')" class="sample-btn">Tell me about humanoid robots</button>
+                        <button onclick="askQuestion('What is the difference between forward and inverse kinematics?')" class="sample-btn">What is kinematics?</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <input
+                        type="text"
+                        id="questionInput"
+                        placeholder="Ask a question..."
+                        onkeypress="handleKeyPress(event)"
+                    >
+                    <button id="sendBtn" onclick="sendQuestion()" class="send-btn">📤 Send</button>
+                </div>
+                <div class="info-text">
+                    <small id="contextInfo"></small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="chatbot.js"></script>
+</body>
+</html>
