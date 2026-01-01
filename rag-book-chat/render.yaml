@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: rag-book-chat
+    env: python
+    region: oregon
+    plan: free
+    branch: master
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: COLLECTION_NAME
+        value: book_v1
+      - key: EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: LLM_MODEL
+        value: anthropic/claude-3.5-sonnet
