@@ -13,12 +13,26 @@ This guide will help you deploy the RAG Book Chat backend to Vercel.
 
 ## Deployment Steps
 
+### 0. Setup GitHub Integration (IMPORTANT - Read First!)
+
+**If you get "Failed to fetch" error**, see `VERCEL_GITHUB_SETUP.md` for detailed troubleshooting.
+
+Quick setup:
+1. Go to Vercel Dashboard → Settings → Git
+2. Make sure GitHub is connected
+3. Click "Adjust GitHub App Permissions"
+4. Grant access to your repository: `Hackathon01-physical-ai-humonaid-book`
+5. Save and return to Vercel
+
 ### 1. Import Project to Vercel
 
 1. Go to https://vercel.com/dashboard
 2. Click "Add New" → "Project"
-3. Import your GitHub repository
-4. Select the `rag-book-chat` directory as the root directory
+3. You should see your GitHub repository listed
+   - If not, click "Adjust GitHub App Permissions" and grant access
+4. Click "Import" next to your repository
+5. **IMPORTANT**: Set Root Directory to `rag-book-chat`
+6. Framework Preset: Other (leave as default)
 
 ### 2. Configure Environment Variables
 
@@ -82,6 +96,11 @@ After deployment, your API will be available at:
 - `POST /admin/purge-sessions` - Purge expired sessions
 
 ## Troubleshooting
+
+### "Failed to fetch" or GitHub import errors
+- **See `VERCEL_GITHUB_SETUP.md` for complete troubleshooting guide**
+- Quick fix: Go to Vercel Settings → Git → Adjust GitHub App Permissions
+- Alternative: Use Vercel CLI to deploy (instructions in setup guide)
 
 ### Function timeout errors
 - Optimize your queries
