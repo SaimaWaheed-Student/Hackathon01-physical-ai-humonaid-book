@@ -36,14 +36,34 @@ Quick setup:
 
 ### 2. Configure Environment Variables
 
-In the Vercel project settings, add the following environment variables:
+**IMPORTANT**: You'll be asked to add environment variables during the import process OR you can add them later in project settings.
 
-- `QDRANT_URL`: Your Qdrant instance URL
-- `QDRANT_API_KEY`: Your Qdrant API key
-- `OPENROUTER_API_KEY`: Your OpenRouter API key
-- `COLLECTION_NAME`: book_v1 (default)
-- `EMBEDDING_MODEL`: text-embedding-3-small (default)
-- `LLM_MODEL`: anthropic/claude-3.5-sonnet (default)
+#### During Import (Recommended):
+After clicking "Import", before deploying, you'll see "Environment Variables" section. Add:
+
+**Required (Must Add):**
+- `QDRANT_URL` = Your Qdrant instance URL (e.g., https://xxx.cloud.qdrant.io)
+- `QDRANT_API_KEY` = Your Qdrant API key
+- `OPENROUTER_API_KEY` = Your OpenRouter API key
+
+**Optional (Can use defaults):**
+- `COLLECTION_NAME` = book_v1
+- `EMBEDDING_MODEL` = text-embedding-3-small
+- `LLM_MODEL` = anthropic/claude-3.5-sonnet
+
+For each variable:
+1. Enter the Name (e.g., QDRANT_URL)
+2. Enter the Value (your actual key/URL)
+3. Select Environment: Production, Preview, Development (or all)
+4. Click "Add"
+
+#### After Deployment:
+If you skipped this step, go to:
+1. Your project in Vercel Dashboard
+2. Settings → Environment Variables
+3. Add each variable with Name and Value
+4. Click "Save"
+5. Redeploy the project
 
 ### 3. Deploy
 
