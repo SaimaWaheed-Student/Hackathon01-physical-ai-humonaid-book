@@ -5,6 +5,7 @@ import logging
 import asyncio
 from typing import Dict, List
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,27 +46,9 @@ SESSIONS: Dict[str, Dict] = {}
 BOOKS: Dict[str, Dict] = {}  # Track ingested books
 
 
-# Background task to clean up expired sessions
-@app.on_event("startup")
-async def cleanup_expired_sessions():
-    """Background task to clean up expired sessions."""
-    async def cleanup_loop():
-        while True:
-            try:
-                now = time.time()
-                expired_sessions = [
-                    sid for sid, sess in SESSIONS.items()
-                    if now > sess.get("expires_at", 0)
-                ]
-                for sid in expired_sessions:
-                    del SESSIONS[sid]
-                    logger.info(f"Purged expired session: {sid}")
-                await asyncio.sleep(60)  # Check every minute
-            except Exception as e:
-                logger.error(f"Error in session cleanup: {e}")
-                await asyncio.sleep(60)
-
-    asyncio.create_task(cleanup_loop())
+# NOTE: Background tasks are disabled in serverless environment
+# Session cleanup is handled per-request in get_session_info endpoint
+# and the /admin/purge-sessions endpoint for manual cleanup
 
 
 @app.get("/health", response_model=HealthResponse)

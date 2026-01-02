@@ -95,12 +95,24 @@ app.add_middleware(
 )
 ```
 
-## Important Notes
+## Important Notes - Serverless Architecture
 
-- Vercel serverless functions have a 10-second execution timeout on the free tier
-- For longer running requests, consider upgrading to a Pro plan
-- The app uses serverless architecture, so there's no persistent in-memory state between requests
-- Make sure to set up Qdrant vector database separately (Vercel doesn't host databases)
+**Understanding Vercel Serverless:**
+- Each API request runs in an isolated serverless function
+- No persistent state between requests (SESSIONS and BOOKS dictionaries reset on each cold start)
+- Background tasks and startup events are disabled
+- Vercel serverless functions have a 10-second execution timeout on the free tier (60 seconds on Pro)
+
+**Architectural Changes for Serverless:**
+- Session cleanup is manual (use `/admin/purge-sessions` endpoint)
+- In-memory session storage works per-function but doesn't persist
+- For production, consider using external session storage (Redis, database)
+- Qdrant vector database must be hosted externally (Qdrant Cloud recommended)
+
+**Free Tier Limitations:**
+- 10-second function timeout
+- Limited concurrent executions
+- Consider upgrading to Pro for production workloads
 
 ## API Endpoints
 
