@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.local
+.vscode/
+.idea/
+*.log
+test_rag.py
+tests/
+scripts/
+render.yaml
+requirements-windows.txt

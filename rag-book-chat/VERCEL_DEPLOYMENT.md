@@ -1,0 +1,110 @@
+# Vercel Deployment Guide
+
+This guide will help you deploy the RAG Book Chat backend to Vercel.
+
+## Prerequisites
+
+- A Vercel account (sign up at https://vercel.com)
+- GitHub repository with the code
+- Required API keys:
+  - QDRANT_URL
+  - QDRANT_API_KEY
+  - OPENROUTER_API_KEY
+
+## Deployment Steps
+
+### 1. Import Project to Vercel
+
+1. Go to https://vercel.com/dashboard
+2. Click "Add New" → "Project"
+3. Import your GitHub repository
+4. Select the `rag-book-chat` directory as the root directory
+
+### 2. Configure Environment Variables
+
+In the Vercel project settings, add the following environment variables:
+
+- `QDRANT_URL`: Your Qdrant instance URL
+- `QDRANT_API_KEY`: Your Qdrant API key
+- `OPENROUTER_API_KEY`: Your OpenRouter API key
+- `COLLECTION_NAME`: book_v1 (default)
+- `EMBEDDING_MODEL`: text-embedding-3-small (default)
+- `LLM_MODEL`: anthropic/claude-3.5-sonnet (default)
+
+### 3. Deploy
+
+Click "Deploy" and Vercel will automatically:
+- Install dependencies from `requirements.txt`
+- Build the serverless functions
+- Deploy your API
+
+### 4. Test Your Deployment
+
+Once deployed, you'll receive a URL like `https://your-project.vercel.app`
+
+Test the health endpoint:
+```bash
+curl https://your-project.vercel.app/health
+```
+
+### 5. Update Frontend CORS
+
+If you have a frontend, update the CORS settings in `app/main.py` to allow your frontend domain:
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://your-frontend-domain.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+## Important Notes
+
+- Vercel serverless functions have a 10-second execution timeout on the free tier
+- For longer running requests, consider upgrading to a Pro plan
+- The app uses serverless architecture, so there's no persistent in-memory state between requests
+- Make sure to set up Qdrant vector database separately (Vercel doesn't host databases)
+
+## API Endpoints
+
+After deployment, your API will be available at:
+
+- `GET /health` - Health check
+- `POST /query` - Query the chatbot
+- `POST /session` - Create a new session
+- `GET /session/{session_id}` - Get session info
+- `GET /books` - List ingested books
+- `POST /ingest` - Ingest a new book
+- `GET /audit/privacy` - Privacy audit
+- `POST /admin/purge-sessions` - Purge expired sessions
+
+## Troubleshooting
+
+### Function timeout errors
+- Optimize your queries
+- Consider upgrading to Vercel Pro for 60-second timeouts
+
+### Environment variable issues
+- Double-check all environment variables are set correctly in Vercel dashboard
+- Redeploy after adding/changing environment variables
+
+### CORS errors
+- Update the `allow_origins` in `app/main.py`
+- Redeploy after making changes
+
+## Monitoring
+
+Use Vercel's built-in monitoring:
+- Function logs: Available in the Vercel dashboard
+- Analytics: Track function invocations and performance
+- Error tracking: Automatic error capture
+
+## Next Steps
+
+1. Set up a custom domain in Vercel
+2. Configure monitoring and alerts
+3. Set up CI/CD for automatic deployments
+4. Consider setting up a staging environment
